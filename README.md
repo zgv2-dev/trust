@@ -10,9 +10,9 @@ Every renderer runs in two modes:
 | variant | stack |
 |---|---|
 | tauri | Tauri 2 webview, HTML/CSS styled like pinged (grid, glow shadows), `requestAnimationFrame` |
-| egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan) |
-| egui-glow | eframe + OpenGL |
+| egui-wgpu | eframe + wgpu (Metal / DX12 through DirectComposition / Vulkan) |
 | slint-femtovg | Slint, femtovg OpenGL renderer |
+| slint-skia-gl | Slint, Skia OpenGL renderer (better text than femtovg) |
 
 ## Run
 
@@ -50,4 +50,5 @@ Please also note the display refresh rate and resolution, and on Linux, Wayland 
 - The overlay makes its whole window click-through and covers only the primary monitor. A real
   overlay needs per-widget hit regions and one window per monitor.
 - softbuffer (CPU raster) is left out: version 0.4 ignores alpha on macOS, so its windows would be opaque.
+- egui-glow is left out: no vsync on macOS, and on Windows the first window was black and the overlay drew nothing.
 - The compositor process list is a fixed set of names. A compositor missing from it reads 0.

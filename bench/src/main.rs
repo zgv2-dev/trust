@@ -8,18 +8,21 @@ use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 use sysinfo::{Pid, System};
 
-// (name, binary, args, BENCH_MODE): "windows" = one window per widget, "overlay" = one click-through
-// window over the primary monitor with every widget inside it.
-const VARIANTS: &[(&str, &str, &[&str], &str)] = &[
-    ("idle (no app)", "", &[], ""),
-    ("tauri", "bench-tauri", &[], "windows"),
-    ("tauri overlay", "bench-tauri", &[], "overlay"),
-    ("egui-wgpu", "bench-egui", &["wgpu"], "windows"),
-    ("egui-wgpu overlay", "bench-egui", &["wgpu"], "overlay"),
-    ("egui-glow", "bench-egui", &["glow"], "windows"),
-    ("egui-glow overlay", "bench-egui", &["glow"], "overlay"),
-    ("slint-femtovg", "bench-slint", &[], "windows"),
-    ("slint-femtovg overlay", "bench-slint", &[], "overlay"),
+// (name, binary, BENCH_MODE, extra env): "windows" = one window per widget, "overlay" = one
+// click-through window over the primary monitor with every widget inside it.
+const FEMTOVG: &[(&str, &str)] = &[("SLINT_BACKEND", "winit-femtovg")];
+// Skia's OpenGL path: its Metal/D3D paths never fire Slint's rendering notifier, so fps can't be counted
+const SKIA: &[(&str, &str)] = &[("SLINT_BACKEND", "winit-skia-opengl")];
+const VARIANTS: &[(&str, &str, &str, &[(&str, &str)])] = &[
+    ("idle (no app)", "", "", &[]),
+    ("tauri", "bench-tauri", "windows", &[]),
+    ("tauri overlay", "bench-tauri", "overlay", &[]),
+    ("egui-wgpu", "bench-egui", "windows", &[]),
+    ("egui-wgpu overlay", "bench-egui", "overlay", &[]),
+    ("slint-femtovg", "bench-slint", "windows", FEMTOVG),
+    ("slint-femtovg overlay", "bench-slint", "overlay", FEMTOVG),
+    ("slint-skia-gl", "bench-slint", "windows", SKIA),
+    ("slint-skia-gl overlay", "bench-slint", "overlay", SKIA),
 ];
 
 fn arg(name: &str, default: u64) -> u64 {
@@ -52,29 +55,32 @@ fn main() {
         env::consts::ARCH,
         sys.cpus().len()
     );
-    for (name, bin, args, mode) in VARIANTS {
+    for (name, bin, mode, envs) in VARIANTS {
         if only.as_deref().is_some_and(|o| o != *name) {
             continue;
         }
         eprintln!("== {name}");
-        let row = run(&mut sys, &dir, bin, args, mode, windows, warmup, secs);
+        let row = run(&mut sys, &dir, bin, mode, envs, windows, warmup, secs);
         out += &format!("| {name} | {row} |\n");
         eprintln!("   {row}");
     }
     print!("\n{out}");
+    if only.is_some() {
+        return; // a partial run must not overwrite a full results file
+    }
     let file = format!("results-{}-{}.md", env::consts::OS, env::consts::ARCH);
     fs::File::create(&file).and_then(|mut f| f.write_all(out.as_bytes())).expect("write results");
     eprintln!("\nsaved {file}");
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run(sys: &mut System, dir: &std::path::Path, bin: &str, args: &[&str], mode: &str, windows: u64, warmup: u64, secs: u64) -> String {
+fn run(sys: &mut System, dir: &std::path::Path, bin: &str, mode: &str, envs: &[(&str, &str)], windows: u64, warmup: u64, secs: u64) -> String {
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let preexisting = sys.processes().keys().copied().collect();
     let fps = Arc::new(Mutex::new(Vec::<(Instant, f64)>::new()));
     let mut child = (!bin.is_empty()).then(|| {
         let mut c = Command::new(dir.join(format!("{bin}{}", env::consts::EXE_SUFFIX)))
-            .args(args)
+            .envs(envs.iter().copied())
             .env("BENCH_WINDOWS", windows.to_string())
             .env("BENCH_MODE", mode)
             .stdout(Stdio::piped())

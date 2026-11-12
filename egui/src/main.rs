@@ -1,5 +1,5 @@
 // egui variant: BENCH_WINDOWS widgets, one transparent window each, or all in one click-through
-// overlay window when BENCH_MODE=overlay. Renderer from argv (wgpu | glow).
+// overlay window when BENCH_MODE=overlay. Renders with wgpu.
 use eframe::egui::{self, Color32, Pos2, Shape, Stroke, Vec2, ViewportBuilder, ViewportId};
 use std::time::Instant;
 
@@ -101,17 +101,17 @@ fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
 
 fn main() -> eframe::Result {
     let windows = std::env::var("BENCH_WINDOWS").ok().and_then(|n| n.parse().ok()).unwrap_or(4);
-    let renderer = match std::env::args().nth(1).as_deref() {
-        Some("glow") => eframe::Renderer::Glow,
-        _ => eframe::Renderer::Wgpu,
-    };
+    // wgpu's default DX12 swapchain (DxgiFromHwnd) ignores alpha; the DirectComposition one keeps it
+    if cfg!(windows) && std::env::var_os("WGPU_DX12_PRESENTATION_SYSTEM").is_none() {
+        std::env::set_var("WGPU_DX12_PRESENTATION_SYSTEM", "Visual");
+    }
     let overlay = std::env::var("BENCH_MODE").is_ok_and(|m| m == "overlay");
     let mut viewport = viewport(0);
     if overlay {
         // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
         viewport = viewport.with_position([0.0, 0.0]).with_mouse_passthrough(true);
     }
-    let opts = eframe::NativeOptions { viewport, renderer, ..Default::default() };
+    let opts = eframe::NativeOptions { viewport, ..Default::default() };
     let now = Instant::now();
     let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false };
     eframe::run_native("egui 0", opts, Box::new(|_| Ok(Box::new(app))))
