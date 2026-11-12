@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["bench", "egui", "slint", "tauri"]
+
+[profile.release]
+debug = false
