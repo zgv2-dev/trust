@@ -38,7 +38,8 @@ fn main() {
             .is_ok_and(|s| s.success());
         assert!(ok, "building the variants failed");
     }
-    let dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    // variants are always built with --release, even when bench itself runs as a debug build
+    let dir = env::current_exe().unwrap().parent().unwrap().with_file_name("release");
     let mut sys = System::new_all().expect("read process list");
     sys.refresh_cpu_all();
     let cpu = sys.cpus().first().map(|c| c.brand().trim().to_string()).unwrap_or_default();
