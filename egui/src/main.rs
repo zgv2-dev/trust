@@ -1,29 +1,39 @@
 // egui variant: BENCH_WINDOWS widgets, one transparent window each, or all in one click-through
 // overlay window when BENCH_MODE=overlay. Renders with wgpu, or OpenGL when BENCH_RENDERER=glow.
-use eframe::egui::{self, Color32, Pos2, Shape, Stroke, Vec2, ViewportBuilder, ViewportId};
+mod draw;
+
+use eframe::egui::{self, pos2, Pos2, ViewportBuilder, ViewportId};
+use halo::{H, MARGIN, W};
 use std::time::Instant;
 
-const ACCENT: Color32 = Color32::from_rgb(80, 255, 120);
+/// Frames during which window positions are re-sent: macOS can ignore or shift the first ones
+/// (borderless windows created ~30 pt low, an overlay pushed below the menu bar while it grows).
+const PLACE_FRAMES: u32 = 30;
 
 struct Bench {
     windows: usize,
     start: Instant,
     frames: u32,
+    total: u32,
     last: Instant,
     overlay: bool,
-    sized: bool,
     freeze: Option<f32>, // BENCH_FREEZE: draw that instant forever, for screenshots
+    glows: Option<draw::Glows>,
+    #[cfg(windows)]
+    clipped: bool,
 }
 
-fn pos(i: usize) -> [f32; 2] {
-    [40.0 + 260.0 * (i % 4) as f32, 40.0 + 140.0 * (i / 4) as f32]
+fn pos(i: usize) -> Pos2 {
+    pos2(40.0 + 260.0 * (i % 4) as f32, 40.0 + 140.0 * (i / 4) as f32)
 }
 
+/// Window i: the panel plus MARGIN on every side for its outer glow.
 fn viewport(i: usize) -> ViewportBuilder {
+    let at = pos(i) - egui::vec2(MARGIN, MARGIN);
     ViewportBuilder::default()
         .with_title(format!("egui {i}"))
-        .with_inner_size([240.0, 110.0])
-        .with_position(pos(i))
+        .with_inner_size([W + 2.0 * MARGIN, H + 2.0 * MARGIN])
+        .with_position(at)
         .with_transparent(true)
         .with_decorations(false)
         .with_always_on_top()
@@ -39,35 +49,50 @@ impl eframe::App for Bench {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let t = self.freeze.unwrap_or_else(|| self.start.elapsed().as_secs_f32());
         let ctx = ui.ctx().clone();
+        let scale = ctx.pixels_per_point();
+        if self.glows.as_ref().is_none_or(|g| g.scale != scale) {
+            self.glows = Some(draw::Glows::new(&ctx, scale)); // glow images at this screen's scale
+        }
+        let glows = self.glows.as_ref().unwrap();
+        let placing = self.total < PLACE_FRAMES;
+        let whole = |ui: &mut egui::Ui, paint: &dyn Fn(&egui::Painter)| {
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| paint(ui.painter()));
+        };
         if self.overlay {
-            // grow to cover the primary monitor once its size is known
-            if let (false, Some(size)) = (self.sized, ctx.input(|i| i.viewport().monitor_size)) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(Pos2::ZERO));
+            // grow to cover the primary monitor, then move to its corner (growing can shift it)
+            if let (true, Some(size)) = (placing, ctx.input(|i| i.viewport().monitor_size)) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-                self.sized = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(Pos2::ZERO));
                 #[cfg(windows)]
-                {
+                if !self.clipped {
                     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
                     if let Ok(RawWindowHandle::Win32(h)) = frame.window_handle().map(|h| h.as_raw()) {
-                        let scale = ctx.pixels_per_point() as f64;
-                        clip::to_rects(h.hwnd.get() as _, &clip::panels(self.windows, scale));
+                        clip::to_rects(h.hwnd.get() as _, &clip::panels(self.windows, scale as f64));
+                        self.clipped = true;
                     }
                 }
             }
-            for i in 0..self.windows {
-                egui::Area::new(egui::Id::NULL.with(("widget", i))).fixed_pos(pos(i)).show(&ctx, |ui| panel(ui, t));
-            }
+            whole(ui, &|p| (0..self.windows).for_each(|i| draw::panel(p, pos(i), t, glows)));
         } else {
-            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| panel(ui, t));
+            let origin = pos2(MARGIN, MARGIN);
+            if placing {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos(0) - egui::vec2(MARGIN, MARGIN)));
+            }
+            whole(ui, &|p| draw::panel(p, origin, t, glows));
             for i in 1..self.windows {
                 ctx.show_viewport_immediate(ViewportId::from_hash_of(i), viewport(i), |ui, _| {
-                    egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| panel(ui, t));
+                    if placing {
+                        let at = pos(i) - egui::vec2(MARGIN, MARGIN);
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::OuterPosition(at));
+                    }
+                    whole(ui, &|p| draw::panel(p, origin, t, glows));
                 });
             }
         }
-        if self.frames == 0 && self.last == self.start {
+        if self.total == 0 {
             println!("first-frame");
         }
+        self.total += 1;
         self.frames += 1;
         if self.last.elapsed().as_secs_f32() >= 1.0 {
             println!("fps {:.0}", self.frames as f32 / self.last.elapsed().as_secs_f32());
@@ -76,49 +101,6 @@ impl eframe::App for Bench {
         // redraw every frame; vsync (eframe default) paces this to the display refresh rate
         ui.ctx().request_repaint();
     }
-}
-
-fn panel(ui: &mut egui::Ui, t: f32) {
-    let panel = egui::Frame::new()
-        .fill(Color32::from_rgba_unmultiplied(3, 10, 3, 60))
-        .stroke(Stroke::new(1.0, ACCENT.gamma_multiply(0.35)))
-        .corner_radius(4.0)
-        .inner_margin(10.0);
-    let shown = panel.show(ui, |ui| {
-        ui.set_min_size(Vec2::new(220.0, 90.0));
-        ui.label(egui::RichText::new("MOTORS").monospace().color(ACCENT));
-        ui.horizontal(|ui| {
-            for m in 0..4 {
-                let fill = 0.5 + 0.45 * (t * 1.3 + m as f32).sin(); // fake PWM
-                ui.vertical(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(44.0), egui::Sense::hover());
-                    pie(ui.painter(), rect.center(), 20.0, fill);
-                    let text = format!("{:4.0}", 1000.0 + fill * 1000.0);
-                    ui.label(egui::RichText::new(text).monospace().color(ACCENT));
-                });
-            }
-        });
-    });
-    glow(ui.painter(), shown.response.rect);
-}
-
-/// Tiny outer glow: faint strokes stepping out from the border (egui has no blur).
-fn glow(p: &egui::Painter, rect: egui::Rect) {
-    for (d, a) in [(1.0, 0.08), (2.0, 0.05), (3.0, 0.03), (4.0, 0.015)] {
-        let stroke = Stroke::new(1.0, ACCENT.gamma_multiply(a));
-        p.rect_stroke(rect.expand(d), 4.0 + d, stroke, egui::StrokeKind::Middle);
-    }
-}
-
-fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
-    p.circle_stroke(c, r, Stroke::new(1.0, ACCENT.gamma_multiply(0.5)));
-    let steps = 32;
-    let mut pts = vec![c];
-    for i in 0..=steps {
-        let a = -std::f32::consts::FRAC_PI_2 + fill * std::f32::consts::TAU * i as f32 / steps as f32;
-        pts.push(c + r * Vec2::angled(a));
-    }
-    p.add(Shape::convex_polygon(pts, ACCENT.gamma_multiply(0.6), Stroke::NONE));
 }
 
 fn main() -> eframe::Result {
@@ -145,14 +127,25 @@ fn main() -> eframe::Result {
     let opts = eframe::NativeOptions { viewport, renderer, ..Default::default() };
     let now = Instant::now();
     let freeze = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse().ok());
-    let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false, freeze };
+    let app = Bench {
+        windows,
+        start: now,
+        frames: 0,
+        total: 0,
+        last: now,
+        overlay,
+        freeze,
+        glows: None,
+        #[cfg(windows)]
+        clipped: false,
+    };
     eframe::run_native(
         "egui 0",
         opts,
         Box::new(|cc| {
-            // Space Mono for every monospace label, as in the reference
+            // Space Mono for all monospace text, as in the reference
             let mut fonts = egui::FontDefinitions::default();
-            let data = egui::FontData::from_static(include_bytes!("../../fonts/SpaceMono-Regular.ttf"));
+            let data = egui::FontData::from_static(halo::FONT);
             fonts.font_data.insert("space-mono".into(), std::sync::Arc::new(data));
             fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "space-mono".into());
             cc.egui_ctx.set_fonts(fonts);

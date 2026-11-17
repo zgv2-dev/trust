@@ -2,44 +2,55 @@
 <html>
 <head>
 <meta charset="utf-8">
-<!-- Styled like pinged's widgets (grid, glow shadows) with DOM and CSS. canvas.html draws the
-     reference look (widget.js) instead. -->
+<!-- The reference look (widget.js) rebuilt with DOM and CSS: absolutely placed elements at the
+     reference's coordinates, and each glow as a drop-shadow of the same shape the canvas blurs
+     (CSS blur radius = canvas shadowBlur). canvas.html draws the reference code itself. -->
 <style>
-  :root { --accent: #50ff78; --bg: #030a03; }
-  html, body { margin: 0; background: transparent; overflow: hidden; font: 12px "Space Mono"; color: var(--accent); }
-  .panel { position: fixed; inset: 0; box-sizing: border-box; padding: 8px 10px; border-radius: 4px;
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-    background: linear-gradient(color-mix(in srgb, var(--accent) 6%, transparent) 1px, transparent 1px) 0 0 / 100% 12px,
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent) 1px, transparent 1px) 0 0 / 12px 100%,
-      color-mix(in srgb, var(--bg) 25%, transparent);
-    box-shadow: 0 0 6px rgba(80,255,120,0.16), inset 0 0 24px color-mix(in srgb, var(--accent) 8%, transparent); }
-  .title { text-shadow: 0 0 6px var(--accent); margin-bottom: 4px; }
-  .row { display: flex; gap: 8px; }
-  .pie { width: 40px; height: 40px; margin: 2px; border-radius: 50%;
-    border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
-    background: conic-gradient(color-mix(in srgb, var(--accent) 60%, transparent) calc(var(--f) * 360deg), transparent 0); }
-  .val { text-align: center; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  .panel { position: fixed; width: 240px; height: 110px; font: 12px/1 "Space Mono"; color: rgb(80,255,120); }
+  .panel > * { position: absolute; box-sizing: border-box; }
+  /* border with the outer glow (drop-shadow of the 1 px border alone, shadowBlur 6) */
+  .glow { inset: 0; border: 1px solid rgba(80,255,120,0.35); border-radius: 4.5px;
+    filter: drop-shadow(0 0 3px rgba(80,255,120,0.45)); }
+  .fill { inset: 0.5px; border-radius: 4px; overflow: hidden; background: rgba(3,10,3,0.25); }
+  .grid { inset: -0.5px; background:
+      linear-gradient(rgba(80,255,120,0.06) 1px, transparent 1px) 0 0 / 100% 12px,
+      linear-gradient(90deg, rgba(80,255,120,0.06) 1px, transparent 1px) 0 0 / 12px 100%; }
+  /* inner glow: a 2 px band just outside the panel, blurred (shadowBlur 24), clipped by .fill */
+  .band { left: -2.5px; top: -2.5px; width: 244px; height: 114px; border: 2px solid rgba(80,255,120,0.15);
+    border-radius: 5px; filter: drop-shadow(0 0 12px rgba(80,255,120,0.5)); }
+  .border { inset: 0; border: 1px solid rgba(80,255,120,0.35); border-radius: 4.5px; }
+  /* text: with line-height = ascent + descent (Space Mono 12 px: 13.44 + 4.332) the baseline sits
+     exactly 13.44 px below the box top, so top = reference baseline - 13.44 */
+  .title { left: 10px; top: 6.56px; line-height: 17.772px; text-shadow: 0 0 6px rgb(80,255,120); }
+  .ring { width: 41px; height: 41px; top: 29.5px; border: 1px solid rgba(80,255,120,0.5); border-radius: 50%; }
+  .wedge { width: 40px; height: 40px; top: 30px; border-radius: 50%;
+    background: conic-gradient(rgba(80,255,120,0.6) calc(var(--f) * 360deg), transparent 0); }
+  .val { width: 52px; text-align: center; top: 80.56px; line-height: 17.772px;
+    text-shadow: 0 0 8px rgba(80,255,120,0.6); }
 </style>
 </head>
 <body>
 <script src="space-mono.js"></script>
 <script>
   document.fonts.add(new FontFace("Space Mono", `url(${window.SPACE_MONO})`));
-  // BENCH_N set: overlay mode, n panels placed inside one window; otherwise one panel filling this window
+  // BENCH_N set: overlay mode, n panels placed inside one window; otherwise one panel, 8 px in
   const n = window.BENCH_N || 0;
+  const el = (parent, cls, css) => parent.appendChild(Object.assign(document.createElement("div"), { className: cls, style: css || "" }));
   const motors = [];
   for (let p = 0; p < Math.max(n, 1); p++) {
-    const panel = document.body.appendChild(Object.assign(document.createElement("div"), { className: "panel" }));
-    if (n) Object.assign(panel.style, { inset: "auto", width: "240px", height: "110px",
-      left: 40 + 260 * (p % 4) + "px", top: 40 + 140 * Math.floor(p / 4) + "px" });
-    panel.appendChild(Object.assign(document.createElement("div"), { className: "title", textContent: "MOTORS" }));
-    const row = panel.appendChild(Object.assign(document.createElement("div"), { className: "row" }));
-    for (let i = 0; i < 4; i++) motors.push(addMotor(row));
-  }
-  function addMotor(row) {
-    const col = row.appendChild(document.createElement("div"));
-    return { pie: col.appendChild(Object.assign(document.createElement("div"), { className: "pie" })),
-             val: col.appendChild(Object.assign(document.createElement("div"), { className: "val" })) };
+    const [x, y] = n ? [40 + 260 * (p % 4), 40 + 140 * Math.floor(p / 4)] : [8, 8];
+    const panel = el(document.body, "panel", `left:${x}px;top:${y}px`);
+    el(panel, "glow");
+    const fill = el(panel, "fill");
+    el(fill, "grid", "position:absolute");
+    el(fill, "band", "position:absolute");
+    el(panel, "border");
+    el(panel, "title").textContent = "MOTORS";
+    for (let i = 0; i < 4; i++) el(panel, "ring", `left:${32 + 52 * i - 20.5}px`);
+    for (let i = 0; i < 4; i++) {
+      motors.push({ wedge: el(panel, "wedge", `left:${32 + 52 * i - 20}px`), val: el(panel, "val", `left:${32 + 52 * i - 26}px`) });
+    }
   }
   const start = performance.now();
   let frames = 0, last = start, first = true;
@@ -47,7 +58,7 @@
     const t = window.BENCH_FREEZE ?? (now - start) / 1000; // frozen for screenshots
     motors.forEach((m, i) => {
       const f = 0.5 + 0.45 * Math.sin(t * 1.3 + i % 4); // fake PWM
-      m.pie.style.setProperty("--f", f);
+      m.wedge.style.setProperty("--f", f);
       m.val.textContent = Math.round(1000 + f * 1000);
     });
     if (first) { window.__TAURI__.core.invoke("first_frame"); first = false; }

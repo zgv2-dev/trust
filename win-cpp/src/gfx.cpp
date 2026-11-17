@@ -51,6 +51,12 @@ Gpu makeGpu(float dpi) {
     g.title = format(dwrite.Get(), fonts.Get(), 12.0f);
     g.value = format(dwrite.Get(), fonts.Get(), 12.0f);
     HR(g.value->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER));
+    ComPtr<IDWriteTextLayout> layout;
+    HR(dwrite->CreateTextLayout(L"0", 1, g.title.Get(), 100, 100, &layout));
+    DWRITE_LINE_METRICS line;
+    UINT32 lines = 0;
+    HR(layout->GetLineMetrics(&line, 1, &lines));
+    g.baseline = line.baseline;
     return g;
 }
 
@@ -70,16 +76,31 @@ Surface makeSurface(const Gpu& g, HWND hwnd, UINT width, UINT height, float dpi)
     HR(s.swap->GetBuffer(0, IID_PPV_ARGS(&back)));
     auto targetProps = props(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, dpi);
     HR(g.dc->CreateBitmapFromDxgiSurface(back.Get(), &targetProps, &s.target));
-    auto layerProps = props(D2D1_BITMAP_OPTIONS_TARGET, dpi);
-    HR(g.dc->CreateBitmap(D2D1::SizeU(width, height), nullptr, 0, &layerProps, &s.layer));
-    HR(g.dc->CreateEffect(CLSID_D2D1Shadow, &s.glow));
-    s.glow->SetInput(0, s.layer.Get());
-    HR(s.glow->SetValue(D2D1_SHADOW_PROP_COLOR, D2D1::Vector4F(80 / 255.0f, 1.0f, 120 / 255.0f, 0.8f)));
-    HR(s.glow->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, 3.0f));
+    s.size = D2D1::SizeU(width, height);
+    s.dpi = dpi;
+    s.layer = makeBitmap(g, s.size, dpi);
+    s.stat = makeBitmap(g, s.size, dpi);
+    s.glow = makeShadow(g, s.layer.Get(), 4.0f, 0.6f); // canvas shadowBlur 8 = standard deviation 4
     HR(g.dcomp->CreateTargetForHwnd(hwnd, TRUE, &s.compTarget));
     HR(g.dcomp->CreateVisual(&s.visual));
     HR(s.visual->SetContent(s.swap.Get()));
     HR(s.compTarget->SetRoot(s.visual.Get()));
     HR(g.dcomp->Commit());
     return s;
+}
+
+ComPtr<ID2D1Bitmap1> makeBitmap(const Gpu& g, D2D1_SIZE_U size, float dpi) {
+    ComPtr<ID2D1Bitmap1> bmp;
+    auto p = props(D2D1_BITMAP_OPTIONS_TARGET, dpi);
+    HR(g.dc->CreateBitmap(size, nullptr, 0, &p, &bmp));
+    return bmp;
+}
+
+ComPtr<ID2D1Effect> makeShadow(const Gpu& g, ID2D1Bitmap1* input, float sigma, float alpha) {
+    ComPtr<ID2D1Effect> e;
+    HR(g.dc->CreateEffect(CLSID_D2D1Shadow, &e));
+    e->SetInput(0, input);
+    HR(e->SetValue(D2D1_SHADOW_PROP_COLOR, D2D1::Vector4F(80 / 255.0f, 1.0f, 120 / 255.0f, alpha)));
+    HR(e->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, sigma));
+    return e;
 }

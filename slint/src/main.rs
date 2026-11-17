@@ -1,89 +1,25 @@
 // Slint variant: BENCH_WINDOWS widgets, one transparent window each, or all in one click-through
-// overlay window when BENCH_MODE=overlay. animation-tick() redraws every frame.
+// overlay window when BENCH_MODE=overlay. animation-tick() redraws every frame. Markup in ui.rs.
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, LogicalPosition, PhysicalPosition, RenderingState, Timer, TimerMode};
 use std::{cell::Cell, rc::Rc, time::Duration};
 
-slint::slint! {
-    import "../fonts/SpaceMono-Regular.ttf";
+mod ui;
 
-    // Tiny outer glow: faint borders stepping out from the panel's (Slint has no blur on strokes).
-    component Glow inherits Rectangle {
-        in property <length> d;
-        in property <float> a;
-        x: -d; y: -d; width: 240px + 2 * d; height: 110px + 2 * d; // panel size
-        border-width: 1px; border-radius: 4px + d;
-        border-color: rgba(80, 255, 120, a);
-    }
+use ui::{Glows, Overlay, Widget};
 
-    component Pie inherits Rectangle {
-        in property <float> amount; // not `fill`: Path has its own fill brush
-        width: 44px; height: 44px;
-        border-width: 1px; border-radius: 22px; border-color: #50ff7880;
-        Path {
-            width: 44px; height: 44px;
-            viewbox-width: 44; viewbox-height: 44;
-            fill: #50ff7899;
-            MoveTo { x: 22; y: 22; }
-            LineTo { x: 22; y: 2; }
-            ArcTo {
-                radius-x: 20; radius-y: 20; large-arc: amount > 0.5; sweep: true;
-                x: 22 + 20 * sin(amount * 360deg); y: 22 - 20 * cos(amount * 360deg);
-            }
-            Close {}
-        }
-    }
-
-    component Panel inherits Rectangle {
-        width: 240px; height: 110px;
-        in property <float> freeze: -1; // >= 0: draw that instant forever, for screenshots
-        property <float> t: freeze >= 0 ? freeze : animation-tick() / 1s;
-        background: #030a033c;
-        border-width: 1px; border-radius: 4px; border-color: #50ff7859;
-        Glow { d: 1px; a: 0.08; }
-        Glow { d: 2px; a: 0.05; }
-        Glow { d: 3px; a: 0.03; }
-        Glow { d: 4px; a: 0.015; }
-        VerticalLayout {
-            padding: 10px; spacing: 4px;
-            Text { text: "MOTORS"; color: #50ff78; font-family: "Space Mono"; }
-            HorizontalLayout {
-                spacing: 8px;
-                for m in 4: VerticalLayout {
-                    property <float> f: 0.5 + 0.45 * sin((t * 1.3 + m) * 1rad); // fake PWM
-                    Pie { amount: f; }
-                    Text { text: round(1000 + f * 1000); color: #50ff78; font-family: "Space Mono"; }
-                }
-            }
-        }
-    }
-
-    export component Widget inherits Window {
-        no-frame: true;
-        always-on-top: true;
-        background: transparent;
-        width: 240px; height: 110px;
-        in property <float> freeze: -1;
-        Panel { freeze: root.freeze; }
-    }
-
-    export component Overlay inherits Window {
-        in property <int> count;
-        in property <float> freeze: -1;
-        // explicit size: without it the window is pinned to its content's preferred size and
-        // macOS ignores any later resize (the overlay stayed small and centered, clipping panels)
-        in property <length> w: 240px;
-        in property <length> h: 110px;
-        width: w; height: h;
-        no-frame: true;
-        always-on-top: true;
-        background: transparent;
-        for i in count: Panel {
-            freeze: root.freeze;
-            x: (40 + 260 * mod(i, 4)) * 1px;
-            y: (40 + 140 * floor(i / 4)) * 1px;
-        }
-    }
+/// halo's glow images at the window's scale, handed to the panel markup.
+fn set_glows(w: &slint::Window, glows: Glows) {
+    let image = |s: &halo::Sprite| {
+        let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&s.rgba, s.width, s.height);
+        slint::Image::from_rgba8_premultiplied(buf)
+    };
+    let scale = w.scale_factor();
+    glows.set_outer(image(&halo::outer(scale)));
+    glows.set_inner(image(&halo::inner(scale)));
+    glows.set_title(image(&halo::title(scale)));
+    let digits: Vec<slint::Image> = halo::digits(scale).iter().map(image).collect();
+    glows.set_digits(slint::ModelRc::new(slint::VecModel::from(digits)));
 }
 
 static FIRST: std::sync::Once = std::sync::Once::new();
@@ -117,6 +53,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = o.as_weak();
         Timer::single_shot(Duration::from_millis(100), move || {
             let Some(o) = weak.upgrade() else { return };
+            set_glows(o.window(), o.global::<Glows>());
             // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
             let size = o.window().with_winit_window(|w| {
                 w.set_cursor_hittest(false).ok();
@@ -140,9 +77,20 @@ fn main() -> Result<(), slint::PlatformError> {
     for i in 0..n {
         let w = Widget::new()?;
         w.set_freeze(freeze);
-        w.window().set_position(LogicalPosition::new(40.0 + 260.0 * (i % 4) as f32, 40.0 + 140.0 * (i / 4) as f32));
+        // the window includes halo::MARGIN around the panel for its glow
+        let at = LogicalPosition::new(40.0 + 260.0 * (i % 4) as f32 - halo::MARGIN, 40.0 + 140.0 * (i / 4) as f32 - halo::MARGIN);
+        w.window().set_position(at);
         let timer = count_frames(w.window());
         w.show()?;
+        // once the native window exists: glows at its scale, and the position again (macOS creates
+        // borderless windows ~30 pt lower than asked)
+        let weak = w.as_weak();
+        Timer::single_shot(Duration::from_millis(100), move || {
+            if let Some(w) = weak.upgrade() {
+                set_glows(w.window(), w.global::<Glows>());
+                w.window().set_position(at);
+            }
+        });
         keep.push((w, timer));
     }
     slint::run_event_loop()

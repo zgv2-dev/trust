@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["backdrop", "bench", "clip", "egui", "tauri", "slint", "gtk", "win", "win-cpp"]
+members = ["backdrop", "bench", "clip", "egui", "halo", "tauri", "slint", "gtk", "win", "win-cpp"]
 
 [profile.release]
 debug = false

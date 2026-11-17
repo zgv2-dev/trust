@@ -1,64 +1,43 @@
-// Same widget as the other variants, in Qt Quick. Glow comes from MultiEffect shadows (GPU).
+// Same widget as the other variants, in Qt Quick: the reference drawing code (widget.js) on two
+// Canvas items per panel, static parts painted once and wedges/numbers every frame.
 import QtQuick
-import QtQuick.Shapes
-import QtQuick.Effects
+import "widget.js" as Look
 
 QtObject {
     id: root
     required property int count
     required property bool overlay
     required property real freeze
-    readonly property color accent: "#50ff78"
+    readonly property int margin: 8 // room around the panel for its outer glow
     property FontLoader mono: FontLoader { source: "../fonts/SpaceMono-Regular.ttf" }
     signal fps(int n)
 
     component Panel: Item {
         id: panel
-        width: 240; height: 110
+        width: Look.W; height: Look.H
         property real clock: 0
         readonly property real t: root.freeze >= 0 ? root.freeze : clock
-        FrameAnimation { running: true; onTriggered: panel.clock += frameTime }
-        Rectangle {
-            anchors.fill: parent; radius: 4
-            color: Qt.rgba(3 / 255, 10 / 255, 3 / 255, 0.25)
+        FrameAnimation { running: true; onTriggered: { panel.clock += frameTime; moving.requestPaint() } }
+        Canvas {
+            x: -root.margin; y: -root.margin; width: Look.W + 2 * root.margin; height: Look.H + 2 * root.margin
+            // repaint once the font is in, so the title isn't left in a fallback font
+            property bool fontReady: root.mono.status === FontLoader.Ready
+            onFontReadyChanged: requestPaint()
+            onPaint: {
+                const g = getContext("2d");
+                g.reset();
+                g.translate(root.margin, root.margin);
+                Look.drawStatic(g);
+            }
         }
-        Rectangle { // the border, with a tiny outer glow (blurred shadow of the border itself)
-            anchors.fill: parent; radius: 4
-            color: "transparent"
-            border.color: Qt.rgba(0.31, 1, 0.47, 0.35)
-            layer.enabled: true
-            layer.effect: MultiEffect { shadowEnabled: true; shadowColor: Qt.rgba(0.31, 1, 0.47, 0.45); shadowBlur: 0.3; shadowHorizontalOffset: 0; shadowVerticalOffset: 0; autoPaddingEnabled: true }
-        }
-        Item {
-            anchors.fill: parent; anchors.margins: 10
-            layer.enabled: true
-            layer.effect: MultiEffect { shadowEnabled: true; shadowColor: root.accent; shadowBlur: 0.4; shadowHorizontalOffset: 0; shadowVerticalOffset: 0 }
-            Text { text: "MOTORS"; color: root.accent; font.family: root.mono.font.family }
-            Row {
-                y: 18; spacing: 8
-                Repeater {
-                    model: 4
-                    Column {
-                        required property int index
-                        property real f: 0.5 + 0.45 * Math.sin(panel.t * 1.3 + index) // fake PWM
-                        Shape {
-                            width: 44; height: 44
-                            ShapePath {
-                                strokeColor: Qt.rgba(0.31, 1, 0.47, 0.5); fillColor: "transparent"
-                                PathAngleArc { centerX: 22; centerY: 22; radiusX: 20; radiusY: 20; startAngle: 0; sweepAngle: 360 }
-                            }
-                            ShapePath {
-                                strokeColor: "transparent"; fillColor: Qt.rgba(0.31, 1, 0.47, 0.6)
-                                startX: 22; startY: 22
-                                PathAngleArc { centerX: 22; centerY: 22; radiusX: 20; radiusY: 20; startAngle: -90; sweepAngle: f * 360; moveToStart: false }
-                            }
-                        }
-                        Text {
-                            width: 44; horizontalAlignment: Text.AlignHCenter
-                            text: Math.round(1000 + f * 1000); color: root.accent; font.family: root.mono.font.family
-                        }
-                    }
-                }
+        Canvas {
+            id: moving
+            x: -root.margin; y: -root.margin; width: Look.W + 2 * root.margin; height: Look.H + 2 * root.margin
+            onPaint: {
+                const g = getContext("2d");
+                g.reset();
+                g.translate(root.margin, root.margin);
+                Look.drawDynamic(g, panel.t);
             }
         }
     }
@@ -73,18 +52,18 @@ QtObject {
             color: "transparent"
             // no Qt.Tool on macOS: tool windows there are panels that hide while the app isn't active
             flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | (Qt.platform.os === "osx" ? 0 : Qt.Tool)
-            x: root.overlay ? 0 : 40 + 260 * (index % 4)
-            y: root.overlay ? 0 : 40 + 140 * Math.floor(index / 4)
-            width: root.overlay ? Screen.width : 240
-            height: root.overlay ? Screen.height : 110
+            x: root.overlay ? 0 : 40 + 260 * (index % 4) - root.margin
+            y: root.overlay ? 0 : 40 + 140 * Math.floor(index / 4) - root.margin
+            width: root.overlay ? Screen.width : Look.W + 2 * root.margin
+            height: root.overlay ? Screen.height : Look.H + 2 * root.margin
             onFrameSwapped: frames++
             Timer { interval: 1000; repeat: true; running: true; onTriggered: { root.fps(win.frames); win.frames = 0 } }
             Repeater {
                 model: root.overlay ? root.count : 1
                 Panel {
                     required property int index
-                    x: root.overlay ? 40 + 260 * (index % 4) : 0
-                    y: root.overlay ? 40 + 140 * Math.floor(index / 4) : 0
+                    x: root.overlay ? 40 + 260 * (index % 4) : root.margin
+                    y: root.overlay ? 40 + 140 * Math.floor(index / 4) : root.margin
                 }
             }
         }

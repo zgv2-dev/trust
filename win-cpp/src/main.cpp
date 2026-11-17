@@ -66,7 +66,9 @@ extern "C" int bench_main() {
     } else {
         for (int i = 0; i < n; i++) {
             D2D1_POINT_2F o = origin(i);
-            layout.push_back({px(o.x, scale), px(o.y, scale), px(W, scale), px(H, scale), {D2D1::Point2F(0, 0)}});
+            // the panel plus MARGIN on every side for its outer glow
+            layout.push_back({px(o.x - MARGIN, scale), px(o.y - MARGIN, scale), px(W + 2 * MARGIN, scale),
+                              px(H + 2 * MARGIN, scale), {D2D1::Point2F(MARGIN, MARGIN)}});
         }
     }
     std::vector<std::pair<Surface, std::vector<D2D1_POINT_2F>>> windows;
@@ -76,6 +78,7 @@ extern "C" int bench_main() {
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()), "CreateWindowExW");
         if (overlay) clipToPanels(hwnd, n, scale);
         windows.emplace_back(makeSurface(gpu, hwnd, w.w, w.h, dpi), w.origins);
+        bake(gpu, brushes, windows.back().first, w.origins);
     }
 
     // BENCH_FREEZE: draw that instant forever, for screenshots

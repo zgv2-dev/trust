@@ -25,7 +25,9 @@ fn main() -> gtk::glib::ExitCode {
 
 #[cfg(target_os = "linux")]
 mod app {
-    use crate::draw::{self, H, W};
+    use crate::draw;
+    use halo::{H, MARGIN, W};
+    const M: f64 = MARGIN as f64;
     use gtk::{cairo, gdk, glib, prelude::*};
     use std::{cell::Cell, rc::Rc, time::Duration, time::Instant};
 
@@ -56,7 +58,7 @@ mod app {
         let display = gdk::Display::default().expect("no display");
         gtk::style_context_add_provider_for_display(&display, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         let layouts: Vec<Vec<(f64, f64)>> =
-            if overlay { vec![(0..n).map(origin).collect()] } else { (0..n).map(|_| vec![(0.0, 0.0)]).collect() };
+            if overlay { vec![(0..n).map(origin).collect()] } else { (0..n).map(|_| vec![(M, M)]).collect() };
         let windows = layouts.len() as u32;
         let (start, frames) = (Instant::now(), Rc::new(Cell::new(0u32)));
         // BENCH_FREEZE: draw that instant forever, for screenshots
@@ -65,12 +67,19 @@ mod app {
             let window = gtk::Window::builder().application(app).decorated(false).resizable(false).build();
             let area = gtk::DrawingArea::new();
             let f = frames.clone();
-            area.set_draw_func(move |_, cr, _, _| {
+            // glow images at the widget's scale, made on first draw and when the scale changes
+            let glows: std::cell::RefCell<Option<draw::Glows>> = Default::default();
+            area.set_draw_func(move |area, cr, _, _| {
+                let scale = area.scale_factor();
+                if glows.borrow().as_ref().is_none_or(|g| g.scale != scale) {
+                    *glows.borrow_mut() = Some(draw::Glows::new(scale));
+                }
+                let glows = glows.borrow();
                 FIRST.call_once(|| println!("first-frame"));
                 f.set(f.get() + 1);
                 let t = freeze.unwrap_or_else(|| start.elapsed().as_secs_f64());
                 for &(x, y) in &origins {
-                    let _ = draw::panel(cr, x, y, t);
+                    let _ = draw::panel(cr, x, y, t, glows.as_ref().unwrap());
                 }
             });
             // redraw on every frame-clock tick: vsync-paced, like requestAnimationFrame
@@ -85,7 +94,8 @@ mod app {
                 window.connect_map(move |w| w.surface().unwrap().set_input_region(Some(&panels(n))));
             } else {
                 // shortcut: GTK 4 has no API for window position or always-on-top; the WM places them
-                window.set_default_size(W as i32, H as i32);
+                // the panel plus halo::MARGIN on every side for its outer glow
+                window.set_default_size((W as f64 + 2.0 * M) as i32, (H as f64 + 2.0 * M) as i32);
             }
             window.present();
         }

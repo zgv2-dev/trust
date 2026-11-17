@@ -1,24 +1,34 @@
 # Transparent widget bench
 
-Draws the same animated widget (pinged's Motors panel: 4 pies + numbers) with Tauri, egui and
-Qt Quick, and measures what each costs. Each one redraws every frame, at the display refresh rate.
+Draws the same animated widget (pinged's Motors panel: 4 pies + numbers) with Tauri, egui, Qt
+Quick, Slint, GTK and native Direct2D, and measures what each costs, how fast it starts, and how
+close it looks to the approved design (`reference/index.html`). Each one redraws every frame, at
+the display refresh rate.
+
+Every renderer draws the reference's exact geometry (positions, Space Mono 12 px, radii, colors)
+and its glows in the same order and blur sizes. Where a toolkit has a real blur it is used
+(Direct2D shadow effects, CSS drop-shadow, Qt Canvas shadows); egui, Slint and GTK/Cairo have
+none, so `halo/` renders those glows once at startup, at the screen's scale, and they draw the
+images. `cargo run -p halo --example preview -- 2 out.png` paints a panel with halo alone, to
+check it against the reference.
 
 Every renderer runs in two modes:
-- **windows**: one transparent, borderless, always-on-top window per widget (pinged today).
+- **windows**: one transparent, borderless, always-on-top window per widget (pinged today), 8 px
+  larger than the panel on every side so the outer glow isn't cut off.
 - **overlay**: one transparent window over the primary monitor with every widget drawn inside it; clicks between widgets pass through.
 
 | variant | stack |
 |---|---|
-| tauri | Tauri 2 webview, HTML/CSS styled like pinged (grid, glow shadows), `requestAnimationFrame` |
+| tauri | Tauri 2 webview, the reference rebuilt in DOM/CSS (absolute positions, drop-shadow glows), `requestAnimationFrame` |
 | tauri-canvas | Same Tauri app drawing the reference itself (`tauri/dist/widget.js`) on one `<canvas>`; static parts drawn once and reused |
-| egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan). On Windows forced to DX12 on a DirectComposition visual (`WGPU_DX12_PRESENTATION_SYSTEM=Visual`); the default HWND swapchain is opaque |
+| egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan), painter calls plus halo glows. On Windows forced to DX12 on a DirectComposition visual (`WGPU_DX12_PRESENTATION_SYSTEM=Visual`); the default HWND swapchain is opaque |
 | egui-glow | Linux only. Same egui app on OpenGL (`BENCH_RENDERER=glow`) |
-| qt | Qt Quick (QML) through PySide6, default renderer (Metal / D3D11 / OpenGL), MultiEffect glow |
+| qt | Qt Quick (QML) through PySide6, default renderer (Metal / D3D11 / OpenGL): the reference drawing code ported to Qt's Canvas (`qt/widget.js`), static parts painted once |
 | qt-opengl | Same, forced to OpenGL (`QSG_RHI_BACKEND=opengl`), in case the default isn't transparent |
-| slint-femtovg | Linux and macOS. Slint, femtovg OpenGL renderer |
+| slint-femtovg | Linux and macOS. Slint markup (`slint/src/ui.rs`) plus halo glows, femtovg OpenGL renderer |
 | slint-skia-gl | Linux and macOS. Slint, Skia OpenGL renderer (better text than femtovg) |
-| gtk4-cairo | Linux only. GTK 4 window, widget drawn with Cairo (CPU), composited by GTK's GL/Vulkan renderer |
-| win-d2d | Windows only. Native Win32 + DirectComposition + Direct2D/DirectWrite, GPU shadow for the glow, one `DwmFlush` per frame |
+| gtk4-cairo | Linux only. GTK 4 window, widget drawn with Cairo (CPU) plus halo glows, composited by GTK's GL/Vulkan renderer |
+| win-d2d | Windows only. Native Win32 + DirectComposition + Direct2D/DirectWrite; static parts and their glows (GPU shadow effects) baked once per window; one `DwmFlush` per frame |
 | win-cpp | Windows only. Same as win-d2d, written in C++ (`win-cpp/src/*.cpp`), to rule out Rust/`windows` crate overhead |
 
 ## Run
@@ -130,11 +140,13 @@ widgets that open in odd places (on Linux some variants can't place windows, see
 - softbuffer (CPU raster) is left out: version 0.4 ignores alpha on macOS, so its windows would be opaque.
 - egui-glow runs only on Linux: no vsync on macOS, and on Windows the first window was black and the overlay drew nothing.
 - Slint is skipped on Windows: 25–38 fps with separate windows, and poor text. Its numbers are in `results/archive.md`.
-  Its overlay passes every click through, widgets included.
+  Its overlay passes every click through, widgets included (like tauri and egui off Windows).
 - On Wayland no app can place its own windows or keep them on top, so with separate windows the
   compositor picks where they go. GTK 4 can't do either on X11 too, and its overlay is a fullscreen window.
   A real always-on-top overlay on Wayland needs the layer-shell protocol (KDE, Sway, Hyprland; not GNOME).
-- gtk4-cairo has no glow.
+- Text rasterizers differ (Core Text, DirectWrite, FreeType, Chrome's Skia, ab_glyph for halo's
+  glows), so even a perfect port keeps a few percent of look error; tauri-canvas, which runs the
+  reference code itself in the system webview, shows that floor.
 - win-cpp's `main` is a 3-line Rust shim that calls the C++ `bench_main`, so cargo builds it; nothing else is Rust.
 - The Qt process is Python, but Python only loads the QML; animation and drawing run in Qt's C++.
 - The compositor process list is a fixed set of names. A compositor missing from it reads 0.

@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 slint = { version = "~1.18.1", features = ["renderer-skia", "unstable-winit-030"] }
+halo = { path = "../halo" }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "glow", "default_fonts", "wayland", "x11"] }
 env_logger = "0.11"
+halo = { path = "../halo" }
 
 [target."cfg(windows)".dependencies]
 clip = { version = "0.1.0", path = "../clip" }

@@ -19,13 +19,18 @@ pub struct Gpu {
     dcomp: IDCompositionDevice,
     pub title: IDWriteTextFormat,
     pub value: IDWriteTextFormat,
+    /// Distance from a text layout's top to its baseline: DrawText places text by its box.
+    pub baseline: f32,
 }
 
 pub struct Surface {
     pub swap: IDXGISwapChain1,
     pub target: ID2D1Bitmap1,
-    pub layer: ID2D1Bitmap1, // foreground drawn here first, so it can be glowed and composited
-    pub glow: ID2D1Effect,
+    pub stat: ID2D1Bitmap1,  // static parts with their glows, baked once (draw::bake)
+    pub layer: ID2D1Bitmap1, // the numbers, drawn here first so they can be glowed
+    pub glow: ID2D1Effect,   // the numbers' glow: shadow of `layer`
+    pub size: D2D_SIZE_U,
+    pub dpi: f32,
     _comp: (IDCompositionTarget, IDCompositionVisual),
 }
 
@@ -78,7 +83,11 @@ impl Gpu {
         };
         let (title, value) = (format(12.0)?, format(12.0)?);
         value.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
-        Ok(Self { dxgi, swap_factory, factory, dc, dcomp, title, value })
+        let layout = dwrite.CreateTextLayout(&[b'0' as u16], &title, 100.0, 100.0)?;
+        let (mut lines, mut count) = ([DWRITE_LINE_METRICS::default()], 0);
+        layout.GetLineMetrics(Some(&mut lines), &mut count)?;
+        let baseline = lines[0].baseline;
+        Ok(Self { dxgi, swap_factory, factory, dc, dcomp, title, value, baseline })
     }
 
     pub unsafe fn surface(&self, hwnd: HWND, width: u32, height: u32, dpi: f32) -> Result<Surface> {
@@ -100,18 +109,30 @@ impl Gpu {
             Some(&props(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, dpi)),
         )?;
         let size = D2D_SIZE_U { width, height };
-        let layer = self.dc.CreateBitmap(size, None, 0, &props(D2D1_BITMAP_OPTIONS_TARGET, dpi))?;
-        let glow = self.dc.CreateEffect(&CLSID_D2D1Shadow)?;
-        glow.SetInput(0, &layer, true);
-        let accent = [80.0f32 / 255.0, 1.0, 120.0 / 255.0, 0.8];
-        glow.SetValue(D2D1_SHADOW_PROP_COLOR.0 as u32, D2D1_PROPERTY_TYPE_VECTOR4, bytes(&accent))?;
-        glow.SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION.0 as u32, D2D1_PROPERTY_TYPE_FLOAT, bytes(&[3.0f32]))?;
+        let layer = self.bitmap(size, dpi)?;
+        let stat = self.bitmap(size, dpi)?;
+        // canvas shadowBlur 8 = standard deviation 4; color as in the reference
+        let glow = self.shadow(&layer, 4.0, 0.6)?;
         let comp_target = self.dcomp.CreateTargetForHwnd(hwnd, true)?;
         let visual = self.dcomp.CreateVisual()?;
         visual.SetContent(&swap)?;
         comp_target.SetRoot(&visual)?;
         self.dcomp.Commit()?;
-        Ok(Surface { swap, target, layer, glow, _comp: (comp_target, visual) })
+        Ok(Surface { swap, target, stat, layer, glow, size, dpi, _comp: (comp_target, visual) })
+    }
+
+    pub unsafe fn bitmap(&self, size: D2D_SIZE_U, dpi: f32) -> Result<ID2D1Bitmap1> {
+        self.dc.CreateBitmap(size, None, 0, &props(D2D1_BITMAP_OPTIONS_TARGET, dpi))
+    }
+
+    /// Canvas-style shadow of `input`: its alpha blurred (sigma = shadowBlur / 2), tinted accent.
+    pub unsafe fn shadow(&self, input: &ID2D1Bitmap1, sigma: f32, alpha: f32) -> Result<ID2D1Effect> {
+        let e = self.dc.CreateEffect(&CLSID_D2D1Shadow)?;
+        e.SetInput(0, input, true);
+        let color = [80.0f32 / 255.0, 1.0, 120.0 / 255.0, alpha];
+        e.SetValue(D2D1_SHADOW_PROP_COLOR.0 as u32, D2D1_PROPERTY_TYPE_VECTOR4, bytes(&color))?;
+        e.SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION.0 as u32, D2D1_PROPERTY_TYPE_FLOAT, bytes(&[sigma]))?;
+        Ok(e)
     }
 }
 

@@ -25,7 +25,7 @@
   }
   fit();
   addEventListener("resize", fit);
-  const pos = (p) => (n ? Widget.origin(p) : [0, 0]);
+  const pos = (p) => (n ? Widget.origin(p) : [M, M]); // a window of its own has M around the panel
 
   // static parts plus the glow margin around them, drawn once
   const bg = document.createElement("canvas");

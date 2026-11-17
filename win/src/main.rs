@@ -19,7 +19,7 @@ fn main() -> windows::core::Result<()> {
 
 #[cfg(windows)]
 mod app {
-    use crate::draw::{self, Brushes, H, W};
+    use crate::draw::{self, Brushes, H, MARGIN, W};
     use crate::gfx::{Gpu, Surface};
     use std::time::Instant;
     use windows::core::{w, Result};
@@ -71,7 +71,9 @@ mod app {
             for i in 0..n {
                 let (x, y) = origin(i);
                 let px = |v: f32| (v * scale).round() as i32;
-                layout.push(((px(x), px(y), px(W), px(H)), vec![(0.0, 0.0)]));
+                // the panel plus MARGIN on every side for its outer glow
+                let (x, y, w, h) = (x - MARGIN, y - MARGIN, W + 2.0 * MARGIN, H + 2.0 * MARGIN);
+                layout.push(((px(x), px(y), px(w), px(h)), vec![(MARGIN, MARGIN)]));
             }
         }
         let mut windows: Vec<(Surface, Vec<(f32, f32)>)> = vec![];
@@ -93,7 +95,9 @@ mod app {
             if overlay {
                 clip::to_rects(hwnd.0, &clip::panels(n, scale as f64));
             }
-            windows.push((gpu.surface(hwnd, w as u32, h as u32, dpi)?, origins));
+            let surface = gpu.surface(hwnd, w as u32, h as u32, dpi)?;
+            draw::bake(&gpu, &brushes, &surface, &origins)?;
+            windows.push((surface, origins));
         }
 
         // BENCH_FREEZE: draw that instant forever, for screenshots
