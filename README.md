@@ -11,7 +11,7 @@ Every renderer runs in two modes:
 |---|---|
 | tauri | Tauri 2 webview, HTML/CSS styled like pinged (grid, glow shadows), `requestAnimationFrame` |
 | tauri-canvas | Same Tauri app, widget drawn on one `<canvas>`; static parts and glow drawn once and reused |
-| egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan). Not transparent on Windows (grey boxes) |
+| egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan). On Windows forced to DX12 on a DirectComposition visual (`WGPU_DX12_PRESENTATION_SYSTEM=Visual`); the default HWND swapchain is opaque |
 | qt | Qt Quick (QML) through PySide6, default renderer (Metal / D3D11 / OpenGL), MultiEffect glow |
 | qt-opengl | Same, forced to OpenGL (`QSG_RHI_BACKEND=opengl`), in case the default isn't transparent |
 | win-d2d | Windows only. Native Win32 + DirectComposition + Direct2D/DirectWrite, GPU shadow for the glow, one `DwmFlush` per frame |

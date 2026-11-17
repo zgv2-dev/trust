@@ -109,6 +109,14 @@ fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
 }
 
 fn main() -> eframe::Result {
+    // wgpu's default DX12 swapchain (from the HWND) and Vulkan are opaque on Windows (grey boxes);
+    // only a swapchain on a DirectComposition visual keeps alpha. egui reads these at startup.
+    #[cfg(windows)]
+    for (key, value) in [("WGPU_BACKEND", "dx12"), ("WGPU_DX12_PRESENTATION_SYSTEM", "Visual")] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
     let windows = std::env::var("BENCH_WINDOWS").ok().and_then(|n| n.parse().ok()).unwrap_or(4);
     let overlay = std::env::var("BENCH_MODE").is_ok_and(|m| m == "overlay");
     let mut viewport = viewport(0);
