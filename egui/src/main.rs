@@ -1,5 +1,5 @@
 // egui variant: BENCH_WINDOWS widgets, one transparent window each, or all in one click-through
-// overlay window when BENCH_MODE=overlay. Renders with wgpu.
+// overlay window when BENCH_MODE=overlay. Renders with wgpu, or OpenGL when BENCH_RENDERER=glow.
 use eframe::egui::{self, Color32, Pos2, Shape, Stroke, Vec2, ViewportBuilder, ViewportId};
 use std::time::Instant;
 
@@ -109,6 +109,7 @@ fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
 }
 
 fn main() -> eframe::Result {
+    env_logger::init(); // RUST_LOG=info shows backend choice and surface warnings
     // wgpu's default DX12 swapchain (from the HWND) and Vulkan are opaque on Windows (grey boxes);
     // only a swapchain on a DirectComposition visual keeps alpha. egui reads these at startup.
     #[cfg(windows)]
@@ -125,7 +126,10 @@ fn main() -> eframe::Result {
         // frame; elsewhere every click passes through, widgets included.
         viewport = viewport.with_position([0.0, 0.0]).with_mouse_passthrough(!cfg!(windows));
     }
-    let opts = eframe::NativeOptions { viewport, ..Default::default() };
+    // BENCH_RENDERER=glow picks OpenGL; with both features eframe would default to glow, so always set it
+    let glow = std::env::var("BENCH_RENDERER").is_ok_and(|r| r == "glow");
+    let renderer = if glow { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu };
+    let opts = eframe::NativeOptions { viewport, renderer, ..Default::default() };
     let now = Instant::now();
     let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false };
     eframe::run_native("egui 0", opts, Box::new(|_| Ok(Box::new(app))))

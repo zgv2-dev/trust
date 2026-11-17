@@ -1,5 +1,6 @@
 // Runs each widget variant with the same scene and window count, and reports what it costs.
 mod sample;
+mod variants;
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -7,29 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 use sysinfo::{Pid, System};
-
-// (name, program, BENCH_MODE, extra env): "windows" = one window per widget, "overlay" = one
-// click-through window over the primary monitor with every widget inside it. Program "qt" runs
-// qt/main.py with a Python that has PySide6.
-const CANVAS: &[(&str, &str)] = &[("BENCH_DRAW", "canvas")];
-const QT_GL: &[(&str, &str)] = &[("QSG_RHI_BACKEND", "opengl")];
-const VARIANTS: &[(&str, &str, &str, &[(&str, &str)])] = &[
-    ("idle (no app)", "", "", &[]),
-    ("tauri", "bench-tauri", "windows", &[]),
-    ("tauri overlay", "bench-tauri", "overlay", &[]),
-    ("tauri-canvas", "bench-tauri", "windows", CANVAS),
-    ("tauri-canvas overlay", "bench-tauri", "overlay", CANVAS),
-    ("egui-wgpu", "bench-egui", "windows", &[]),
-    ("egui-wgpu overlay", "bench-egui", "overlay", &[]),
-    ("qt", "qt", "windows", &[]),
-    ("qt overlay", "qt", "overlay", &[]),
-    ("qt-opengl", "qt", "windows", QT_GL),
-    ("qt-opengl overlay", "qt", "overlay", QT_GL),
-    ("win-d2d", "bench-win", "windows", &[]),
-    ("win-d2d overlay", "bench-win", "overlay", &[]),
-    ("win-cpp", "bench-win-cpp", "windows", &[]),
-    ("win-cpp overlay", "bench-win-cpp", "overlay", &[]),
-];
+use variants::{runs_here, VARIANTS};
 
 /// First of $BENCH_PYTHON, python3, python that can import PySide6.
 fn python() -> Option<String> {
@@ -47,13 +26,19 @@ fn arg(name: &str, default: u64) -> u64 {
 fn main() {
     let (windows, warmup, secs) = (arg("--windows", 4), arg("--warmup", 5), arg("--secs", 20));
     let only = env::args().skip_while(|a| a != "--only").nth(1);
+    // one package at a time, so a missing system library skips only that package's rows
+    let mut failed = vec![];
     if !env::args().any(|a| a == "--no-build") {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-        let ok = Command::new(cargo)
-            .args(["build", "--release", "-p", "bench-tauri", "-p", "bench-egui", "-p", "bench-win", "-p", "bench-win-cpp"])
-            .status()
-            .is_ok_and(|s| s.success());
-        assert!(ok, "building the variants failed");
+        let mut packages: Vec<&str> =
+            VARIANTS.iter().filter(|v| runs_here(v.4) && v.1.starts_with("bench-")).map(|v| v.1).collect();
+        packages.dedup();
+        for p in packages {
+            if !Command::new(&cargo).args(["build", "--release", "-p", p]).status().is_ok_and(|s| s.success()) {
+                eprintln!("building {p} failed; its rows will be skipped");
+                failed.push(p);
+            }
+        }
     }
     // variants are always built with --release, even when bench itself runs as a debug build
     let dir = env::current_exe().unwrap().parent().unwrap().with_file_name("release");
@@ -71,7 +56,7 @@ fn main() {
         env::consts::ARCH,
         sys.cpus().len()
     );
-    for (name, bin, mode, envs) in VARIANTS {
+    for (name, bin, mode, envs, os) in VARIANTS {
         if only.as_deref().is_some_and(|o| o != *name) {
             continue;
         }
@@ -79,8 +64,12 @@ fn main() {
         let cmd = match (*bin, &python) {
             ("", _) => None,
             ("qt", Some(py)) => Some(Command::new(py)).map(|mut c| { c.arg(&qt_script); c }),
-            ("bench-win" | "bench-win-cpp", _) if !cfg!(windows) => {
-                out += &format!("| {name} | skipped: Windows only | | | | | |\n");
+            _ if !runs_here(os) => {
+                out += &format!("| {name} | skipped: {} only | | | | | |\n", os.join(", "));
+                continue;
+            }
+            _ if failed.contains(bin) => {
+                out += &format!("| {name} | skipped: build failed | | | | | |\n");
                 continue;
             }
             ("qt", None) => {

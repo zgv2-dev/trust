@@ -1,0 +1,7 @@
+[package]
+name = "bench-gtk"
+version = "0.1.0"
+edition = "2021"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "0.11", package = "gtk4" }

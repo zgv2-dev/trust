@@ -12,16 +12,29 @@ Every renderer runs in two modes:
 | tauri | Tauri 2 webview, HTML/CSS styled like pinged (grid, glow shadows), `requestAnimationFrame` |
 | tauri-canvas | Same Tauri app, widget drawn on one `<canvas>`; static parts and glow drawn once and reused |
 | egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan). On Windows forced to DX12 on a DirectComposition visual (`WGPU_DX12_PRESENTATION_SYSTEM=Visual`); the default HWND swapchain is opaque |
+| egui-glow | Linux only. Same egui app on OpenGL (`BENCH_RENDERER=glow`) |
 | qt | Qt Quick (QML) through PySide6, default renderer (Metal / D3D11 / OpenGL), MultiEffect glow |
 | qt-opengl | Same, forced to OpenGL (`QSG_RHI_BACKEND=opengl`), in case the default isn't transparent |
+| slint-femtovg | Linux and macOS. Slint, femtovg OpenGL renderer |
+| slint-skia-gl | Linux and macOS. Slint, Skia OpenGL renderer (better text than femtovg) |
+| gtk4-cairo | Linux only. GTK 4 window, widget drawn with Cairo (CPU), composited by GTK's GL/Vulkan renderer |
 | win-d2d | Windows only. Native Win32 + DirectComposition + Direct2D/DirectWrite, GPU shadow for the glow, one `DwmFlush` per frame |
 | win-cpp | Windows only. Same as win-d2d, written in C++ (`win-cpp/src/*.cpp`), to rule out Rust/`windows` crate overhead |
 
 ## Run
 
 You need Rust stable on every platform. On Windows, win-cpp also needs the MSVC C++ build tools
-(Visual Studio "Desktop development with C++", which Rust's MSVC toolchain already requires). On Linux you also need the Tauri system packages
-(`libwebkit2gtk-4.1-dev` and its companions), the same ones pinged builds with.
+(Visual Studio "Desktop development with C++", which Rust's MSVC toolchain already requires). 
+On Linux (Debian/Ubuntu package names; compile-checked on Debian 13):
+
+```
+sudo apt install build-essential curl libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev \
+  libayatana-appindicator3-dev libgtk-4-dev libfontconfig-dev libxkbcommon-dev clang
+```
+
+The first line is what Tauri needs, the same as pinged. `libgtk-4-dev` is for gtk4-cairo and the
+last two for Slint. The bench builds each variant on its own, so a missing package skips only
+that variant's rows (`skipped: build failed`), with the compiler error above the results.
 
 The Qt rows need Python with PySide6: `pip install PySide6`. The bench uses the first of
 `$BENCH_PYTHON`, `python3`, `python` that can import it, and marks the Qt rows skipped if none can.
@@ -39,7 +52,9 @@ move windows while it runs, and keep other apps idle. Results print at the end a
 Options: `--windows N` (the widget count, default 4), `--secs N`, `--warmup N`,
 `--only "<variant name>"` (prints only, doesn't save), and `--no-build`.
 
-Please also note the display refresh rate and resolution, and on Linux, Wayland or X11 plus the desktop (GNOME, KDE, …).
+Please also note the display refresh rate and resolution, and on Linux, Wayland or X11 plus the desktop (GNOME, KDE, …) and the GPU driver.
+Also say which variants drew something wrong: an opaque or black background, a missing widget, or
+widgets that open in odd places (on Linux some variants can't place windows, see below).
 
 ## Columns
 
@@ -60,8 +75,13 @@ Please also note the display refresh rate and resolution, and on Linux, Wayland 
   `SetWindowRgn` (`clip` crate) on Windows, and off Windows tauri and egui pass every click through.
 - Every overlay covers only the primary monitor. A real one needs one window per monitor.
 - softbuffer (CPU raster) is left out: version 0.4 ignores alpha on macOS, so its windows would be opaque.
-- egui-glow is left out: no vsync on macOS, and on Windows the first window was black and the overlay drew nothing.
-- Slint is left out: 25–38 fps with separate windows on Windows, and poor text. Its numbers are in `results/archive.md`.
+- egui-glow runs only on Linux: no vsync on macOS, and on Windows the first window was black and the overlay drew nothing.
+- Slint is skipped on Windows: 25–38 fps with separate windows, and poor text. Its numbers are in `results/archive.md`.
+  Its overlay passes every click through, widgets included.
+- On Wayland no app can place its own windows or keep them on top, so with separate windows the
+  compositor picks where they go. GTK 4 can't do either on X11 too, and its overlay is a fullscreen window.
+  A real always-on-top overlay on Wayland needs the layer-shell protocol (KDE, Sway, Hyprland; not GNOME).
+- gtk4-cairo has no glow.
 - win-cpp's `main` is a 3-line Rust shim that calls the C++ `bench_main`, so cargo builds it; nothing else is Rust.
 - The Qt process is Python, but Python only loads the QML; animation and drawing run in Qt's C++.
 - The compositor process list is a fixed set of names. A compositor missing from it reads 0.
