@@ -96,7 +96,10 @@ mod app {
             windows.push((gpu.surface(hwnd, w as u32, h as u32, dpi)?, origins));
         }
 
+        // BENCH_FREEZE: draw that instant forever, for screenshots
+        let freeze: Option<f32> = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse().ok());
         let start = Instant::now();
+        let mut first = true;
         let (mut frames, mut last) = (0u32, Instant::now());
         let mut msg = MSG::default();
         loop {
@@ -107,13 +110,16 @@ mod app {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-            let t = start.elapsed().as_secs_f32();
+            let t = freeze.unwrap_or_else(|| start.elapsed().as_secs_f32());
             for (surface, origins) in &windows {
                 draw::frame(&gpu, &brushes, surface, origins, t)?;
                 surface.swap.Present(0, DXGI_PRESENT(0)).ok()?;
             }
             // one wait per frame for all windows; Present(1) per swap chain would stack N vsync waits
             DwmFlush()?;
+            if std::mem::take(&mut first) {
+                println!("first-frame");
+            }
             frames += 1;
             if last.elapsed().as_secs_f32() >= 1.0 {
                 println!("fps {:.0}", frames as f32 / last.elapsed().as_secs_f32());

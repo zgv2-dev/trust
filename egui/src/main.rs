@@ -12,6 +12,7 @@ struct Bench {
     last: Instant,
     overlay: bool,
     sized: bool,
+    freeze: Option<f32>, // BENCH_FREEZE: draw that instant forever, for screenshots
 }
 
 fn pos(i: usize) -> [f32; 2] {
@@ -36,7 +37,7 @@ impl eframe::App for Bench {
 
     #[allow(unused_variables)] // `frame` is only used on Windows
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let t = self.start.elapsed().as_secs_f32();
+        let t = self.freeze.unwrap_or_else(|| self.start.elapsed().as_secs_f32());
         let ctx = ui.ctx().clone();
         if self.overlay {
             // grow to cover the primary monitor once its size is known
@@ -63,6 +64,9 @@ impl eframe::App for Bench {
                     egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| panel(ui, t));
                 });
             }
+        }
+        if self.frames == 0 && self.last == self.start {
+            println!("first-frame");
         }
         self.frames += 1;
         if self.last.elapsed().as_secs_f32() >= 1.0 {
@@ -131,6 +135,7 @@ fn main() -> eframe::Result {
     let renderer = if glow { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu };
     let opts = eframe::NativeOptions { viewport, renderer, ..Default::default() };
     let now = Instant::now();
-    let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false };
+    let freeze = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse().ok());
+    let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false, freeze };
     eframe::run_native("egui 0", opts, Box::new(|_| Ok(Box::new(app))))
 }

@@ -13,6 +13,8 @@ engine = QQmlApplicationEngine()
 engine.setInitialProperties({
     "count": int(os.environ.get("BENCH_WINDOWS", "4")),
     "overlay": os.environ.get("BENCH_MODE") == "overlay",
+    # BENCH_FREEZE: draw that instant forever, for screenshots; -1 = animate
+    "freeze": float(os.environ.get("BENCH_FREEZE", "-1")),
 })
 engine.load(Path(__file__).with_name("main.qml"))
 if not engine.rootObjects():
@@ -24,6 +26,11 @@ if os.environ.get("BENCH_MODE") == "overlay":
         mask += QRegion(QRect(40 + 260 * (i % 4), 40 + 140 * (i // 4), 240, 110))
     for window in app.topLevelWindows():
         window.setMask(mask)
-# the bench reads "fps N" lines from stdout
+# the bench reads "fps N" lines and one "first-frame" line from stdout
 engine.rootObjects()[0].fps.connect(lambda n: print(f"fps {n}", flush=True))
+first = app.topLevelWindows()[0]
+def on_first_frame():
+    print("first-frame", flush=True)
+    first.frameSwapped.disconnect(on_first_frame)
+first.frameSwapped.connect(on_first_frame)
 sys.exit(app.exec())

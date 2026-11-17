@@ -2,7 +2,8 @@
 <html>
 <head>
 <meta charset="utf-8">
-<!-- Styled like pinged's widgets (grid, glow shadows), since that is the cost being compared. -->
+<!-- Styled like pinged's widgets (grid, glow shadows) with DOM and CSS. canvas.html draws the
+     reference look (widget.js) instead. -->
 <style>
   :root { --accent: #50ff78; --bg: #030a03; }
   html, body { margin: 0; background: transparent; overflow: hidden; font: 12px monospace; color: var(--accent); }
@@ -39,14 +40,15 @@
              val: col.appendChild(Object.assign(document.createElement("div"), { className: "val" })) };
   }
   const start = performance.now();
-  let frames = 0, last = start;
+  let frames = 0, last = start, first = true;
   function tick(now) {
-    const t = (now - start) / 1000;
+    const t = window.BENCH_FREEZE ?? (now - start) / 1000; // frozen for screenshots
     motors.forEach((m, i) => {
       const f = 0.5 + 0.45 * Math.sin(t * 1.3 + i % 4); // fake PWM
       m.pie.style.setProperty("--f", f);
       m.val.textContent = Math.round(1000 + f * 1000);
     });
+    if (first) { window.__TAURI__.core.invoke("first_frame"); first = false; }
     frames++;
     if (now - last >= 1000) {
       window.__TAURI__.core.invoke("fps", { n: frames * 1000 / (now - last) });

@@ -29,6 +29,8 @@ mod app {
     use gtk::{cairo, gdk, glib, prelude::*};
     use std::{cell::Cell, rc::Rc, time::Duration, time::Instant};
 
+    static FIRST: std::sync::Once = std::sync::Once::new();
+
     fn origin(i: usize) -> (f64, f64) {
         (40.0 + 260.0 * (i % 4) as f64, 40.0 + 140.0 * (i / 4) as f64)
     }
@@ -47,13 +49,16 @@ mod app {
             if overlay { vec![(0..n).map(origin).collect()] } else { (0..n).map(|_| vec![(0.0, 0.0)]).collect() };
         let windows = layouts.len() as u32;
         let (start, frames) = (Instant::now(), Rc::new(Cell::new(0u32)));
+        // BENCH_FREEZE: draw that instant forever, for screenshots
+        let freeze: Option<f64> = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse().ok());
         for origins in layouts {
             let window = gtk::Window::builder().application(app).decorated(false).resizable(false).build();
             let area = gtk::DrawingArea::new();
             let f = frames.clone();
             area.set_draw_func(move |_, cr, _, _| {
+                FIRST.call_once(|| println!("first-frame"));
                 f.set(f.get() + 1);
-                let t = start.elapsed().as_secs_f64();
+                let t = freeze.unwrap_or_else(|| start.elapsed().as_secs_f64());
                 for &(x, y) in &origins {
                     let _ = draw::panel(cr, x, y, t);
                 }

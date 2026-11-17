@@ -8,18 +8,27 @@ fn fps(n: f64) {
     println!("fps {n:.0}");
 }
 
+#[tauri::command]
+fn first_frame() {
+    println!("first-frame");
+}
+
 fn main() {
     let n: usize = std::env::var("BENCH_WINDOWS").ok().and_then(|n| n.parse().ok()).unwrap_or(4);
     let page = if std::env::var("BENCH_DRAW").is_ok_and(|d| d == "canvas") { "canvas.html" } else { "index.html" };
+    // BENCH_FREEZE: draw that instant forever, so screenshots can be compared with the reference
+    let freeze = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse::<f64>().ok());
+    let freeze = freeze.map_or("undefined".into(), |t| t.to_string());
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![fps])
+        .invoke_handler(tauri::generate_handler![fps, first_frame])
         .setup(move |app| {
+            let freeze = &freeze;
             if std::env::var("BENCH_MODE").is_ok_and(|m| m == "overlay") {
                 // shortcut: primary monitor only; real use needs one overlay per monitor
                 let m = app.primary_monitor()?.expect("a monitor");
                 let size = m.size().to_logical::<f64>(m.scale_factor());
                 let w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App(page.into()))
-                    .initialization_script(format!("window.BENCH_N = {n};"))
+                    .initialization_script(format!("window.BENCH_N = {n}; window.BENCH_FREEZE = {freeze};"))
                     .title("tauri overlay")
                     .inner_size(size.width, size.height)
                     .position(0.0, 0.0)
@@ -37,6 +46,7 @@ fn main() {
             }
             for i in 0..n {
                 WebviewWindowBuilder::new(app, format!("w{i}"), WebviewUrl::App(page.into()))
+                    .initialization_script(format!("window.BENCH_FREEZE = {freeze};"))
                     .title(format!("tauri {i}"))
                     .inner_size(240.0, 110.0)
                     .position(40.0 + 260.0 * (i % 4) as f64, 40.0 + 140.0 * (i / 4) as f64)

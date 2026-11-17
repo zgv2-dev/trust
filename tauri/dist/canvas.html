@@ -2,9 +2,8 @@
 <html>
 <head>
 <meta charset="utf-8">
-<!-- Same widget as index.html, drawn on one <canvas>. The static parts (panel, grid, glow, title,
-     pie rings) are drawn once into an offscreen canvas; each frame only clears, blits, and draws
-     the wedges and numbers. -->
+<!-- The reference look (widget.js) on one <canvas>. The static parts are drawn once into an
+     offscreen canvas; each frame only clears, blits, and draws the wedges and numbers. -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
   canvas { position: fixed; left: 0; top: 0; }
@@ -12,9 +11,12 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script src="widget.js"></script>
 <script>
+  const { W, H } = Widget;
   const n = window.BENCH_N || 0; // set: overlay mode, n panels in one window; else one panel
-  const W = 240, H = 110, ACC = "rgb(80,255,120)", dpr = devicePixelRatio || 1;
+  const freeze = window.BENCH_FREEZE; // set: draw this instant forever (for screenshots)
+  const dpr = devicePixelRatio || 1;
   const c = document.getElementById("c"), ctx = c.getContext("2d");
   function fit() {
     c.width = innerWidth * dpr; c.height = innerHeight * dpr;
@@ -22,51 +24,24 @@
   }
   fit();
   addEventListener("resize", fit);
-  const pos = (p) => (n ? [40 + 260 * (p % 4), 40 + 140 * Math.floor(p / 4)] : [0, 0]);
-  const pieX = (i) => 10 + 22 + i * 52, PIE_Y = 50, R = 20;
+  const pos = (p) => (n ? Widget.origin(p) : [0, 0]);
 
   const bg = document.createElement("canvas");
   bg.width = W * dpr; bg.height = H * dpr;
-  {
-    const g = bg.getContext("2d");
-    g.scale(dpr, dpr);
-    g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 4);
-    g.fillStyle = "rgba(3,10,3,0.25)"; g.fill();
-    g.save(); g.clip();
-    g.strokeStyle = "rgba(80,255,120,0.06)"; g.lineWidth = 1;
-    for (let y = 0; y < H; y += 12) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); g.stroke(); }
-    for (let x = 0; x < W; x += 12) { g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); g.stroke(); }
-    g.shadowColor = "rgba(80,255,120,0.5)"; g.shadowBlur = 24; // inset glow
-    g.strokeStyle = "rgba(80,255,120,0.15)"; g.lineWidth = 2;
-    g.beginPath(); g.roundRect(-1, -1, W + 2, H + 2, 4); g.stroke();
-    g.restore();
-    g.strokeStyle = "rgba(80,255,120,0.35)";
-    g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 4); g.stroke();
-    g.font = "12px monospace"; g.fillStyle = ACC; g.shadowColor = ACC; g.shadowBlur = 6;
-    g.fillText("MOTORS", 10, 20);
-    g.shadowBlur = 0; g.strokeStyle = "rgba(80,255,120,0.5)";
-    for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(pieX(i), PIE_Y, R, 0, 2 * Math.PI); g.stroke(); }
-  }
+  { const g = bg.getContext("2d"); g.scale(dpr, dpr); Widget.drawStatic(g); }
 
   const start = performance.now();
-  let frames = 0, last = start;
+  let frames = 0, last = start, first = true;
   function tick(now) {
-    const t = (now - start) / 1000;
+    const t = freeze ?? (now - start) / 1000;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.font = "12px monospace"; ctx.textAlign = "center";
     for (let p = 0; p < Math.max(n, 1); p++) {
       const [x, y] = pos(p);
       ctx.clearRect(x, y, W, H); // only panel areas; the rest of the canvas stays empty
       ctx.drawImage(bg, x, y, W, H);
-      for (let i = 0; i < 4; i++) {
-        const f = 0.5 + 0.45 * Math.sin(t * 1.3 + i); // fake PWM
-        ctx.beginPath(); ctx.moveTo(x + pieX(i), y + PIE_Y);
-        ctx.arc(x + pieX(i), y + PIE_Y, R, -Math.PI / 2, -Math.PI / 2 + f * 2 * Math.PI);
-        ctx.fillStyle = "rgba(80,255,120,0.6)"; ctx.shadowBlur = 0; ctx.fill();
-        ctx.fillStyle = ACC; ctx.shadowColor = "rgba(80,255,120,0.6)"; ctx.shadowBlur = 8;
-        ctx.fillText(Math.round(1000 + f * 1000), x + pieX(i), y + 94);
-      }
+      Widget.drawDynamic(ctx, x, y, t);
     }
+    if (first) { window.__TAURI__.core.invoke("first_frame"); first = false; }
     frames++;
     if (now - last >= 1000) {
       window.__TAURI__.core.invoke("fps", { n: frames * 1000 / (now - last) });

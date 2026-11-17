@@ -78,6 +78,10 @@ extern "C" int bench_main() {
         windows.emplace_back(makeSurface(gpu, hwnd, w.w, w.h, dpi), w.origins);
     }
 
+    // BENCH_FREEZE: draw that instant forever, for screenshots
+    const char* freezeEnv = getenv("BENCH_FREEZE");
+    float freeze = freezeEnv ? (float)atof(freezeEnv) : -1.0f;
+    bool first = true;
     using clock = std::chrono::steady_clock;
     auto start = clock::now(), last = start;
     int frames = 0;
@@ -88,13 +92,18 @@ extern "C" int bench_main() {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        float t = std::chrono::duration<float>(clock::now() - start).count();
+        float t = freeze >= 0 ? freeze : std::chrono::duration<float>(clock::now() - start).count();
         for (auto& w : windows) {
             drawFrame(gpu, brushes, w.first, w.second, t);
             HR(w.first.swap->Present(0, 0));
         }
         // one wait per frame for all windows; Present(1) per swap chain would stack N vsync waits
         HR(DwmFlush());
+        if (first) {
+            printf("first-frame\n");
+            fflush(stdout);
+            first = false;
+        }
         frames++;
         float elapsed = std::chrono::duration<float>(clock::now() - last).count();
         if (elapsed >= 1.0f) {

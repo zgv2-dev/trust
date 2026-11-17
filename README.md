@@ -10,7 +10,7 @@ Every renderer runs in two modes:
 | variant | stack |
 |---|---|
 | tauri | Tauri 2 webview, HTML/CSS styled like pinged (grid, glow shadows), `requestAnimationFrame` |
-| tauri-canvas | Same Tauri app, widget drawn on one `<canvas>`; static parts and glow drawn once and reused |
+| tauri-canvas | Same Tauri app drawing the reference itself (`tauri/dist/widget.js`) on one `<canvas>`; static parts drawn once and reused |
 | egui-wgpu | eframe + wgpu (Metal / DX12 / Vulkan). On Windows forced to DX12 on a DirectComposition visual (`WGPU_DX12_PRESENTATION_SYSTEM=Visual`); the default HWND swapchain is opaque |
 | egui-glow | Linux only. Same egui app on OpenGL (`BENCH_RENDERER=glow`) |
 | qt | Qt Quick (QML) through PySide6, default renderer (Metal / D3D11 / OpenGL), MultiEffect glow |
@@ -40,17 +40,42 @@ The Qt rows need Python with PySide6: `pip install PySide6`. The bench uses the 
 `$BENCH_PYTHON`, `python3`, `python` that can import it, and marks the Qt rows skipped if none can.
 With a virtualenv, set `BENCH_PYTHON` to its interpreter.
 
+### The reference look
+
+`reference/index.html` is the look every renderer is scored against: the widgets drawn on a
+canvas (`tauri/dist/widget.js`) over a random background. Open it in a browser at 100% zoom on
+the machine you'll test, check the look over a few backgrounds (Space for the next one), then
+press **Export reference PNG** and move the file (`ref-<os>-<scale>x.png`) into `reference/`.
+Export again after any change to `widget.js`, and on each OS: fonts differ between systems.
+
+### The bench
+
+The look check takes screenshots. On macOS, give your terminal Screen Recording permission
+(System Settings → Privacy & Security); without it the screenshots show only the wallpaper and
+every widget reads as missing. On Linux it uses the first of `grim`, `spectacle`,
+`gnome-screenshot`, `import` (ImageMagick) that works.
+
 ```
 cargo run --release -p bench
 ```
 
-This builds every variant, then runs them one at a time: 5 s warmup and 20 s measured each,
-about 5–6 minutes in total. Windows open and close on their own. Don't touch the machine or
-move windows while it runs, and keep other apps idle. Results print at the end and are saved to
-`results-<os>-<arch>.md`. Send that file back.
+This builds every variant, then runs them one at a time. For each one it takes a screenshot,
+launches the app with the animation frozen (cold start), waits 3 s, takes another screenshot and
+closes it, launches it 3 more times (warm starts), then measures 5 s warmup + 20 s with the
+animation running. About 45 s per variant, 10–15 minutes in total. Windows open and close on
+their own. Don't touch the machine or move windows while it runs, keep other apps idle, and keep
+the top-left of the screen (where the widgets go) free of windows that change.
+
+Each run writes `results/<os>-<arch>-<UTC time>.md` and a folder of the same name with one
+picture per variant: the expected look on top, the actual screen below. Runs accumulate.
+`cargo run --release -p bench -- --summary` writes `results/<os>-<arch>-summary.md` with the
+median of every column across all runs, so one noisy run doesn't decide anything. Send the result
+files (and pictures of variants that look wrong) back.
 
 Options: `--windows N` (the widget count, default 4), `--secs N`, `--warmup N`,
-`--only "<variant name>"` (prints only, doesn't save), and `--no-build`.
+`--only "<variant name>"` (prints only, doesn't save), `--no-build`, `--scale S` (which reference
+to use when `reference/` has more than one for this OS), `--purge` (see cold start below), and
+`--summary`.
 
 Please also note the display refresh rate and resolution, and on Linux, Wayland or X11 plus the desktop (GNOME, KDE, …) and the GPU driver.
 Also say which variants drew something wrong: an opaque or black background, a missing widget, or
@@ -66,10 +91,24 @@ widgets that open in odd places (on Linux some variants can't place windows, see
   Read it as a rough signal: other apps on the desktop affect it too.
 - **fps per window**: frames actually drawn per second. It should match the refresh rate. Below
   that, the variant can't keep up. Above it, vsync isn't working and the CPU figure is inflated.
+- **cold start ms**: launch to first frame drawn, on the variant's first launch in the run. A first
+  launch still finds most files in the OS cache. For a real cold start, run `sudo -v`, then the
+  bench with `--purge`: it drops the file cache before each cold launch (macOS `purge`, Linux
+  `drop_caches`; Windows has no equivalent).
+- **warm start ms**: the same, median of 3 launches right after.
+- **widgets found**: how many of the widgets appear on screen in the screenshot.
+- **placement off px**: the farthest any found widget sits from where it should be, in logical
+  pixels. Windows the window manager moved, or an overlay pushed below the menu bar, show here.
+- **look error %**: how far the widgets look from the reference: per-pixel difference from the
+  reference composited over the same background, relative to drawing nothing there. 0 = identical,
+  100 = as different as an empty spot. Missing widgets count as 100. Anti-aliasing and font
+  rendering alone give a few percent; compare variants with each other.
 
 ## Known gaps
 
 - GPU time isn't measured, only CPU.
+- "First frame" is when the app finished its first draw call (Tauri: the first `requestAnimationFrame`),
+  not when the compositor showed it.
 - Every overlay is clipped to its panels: clicks between widgets fall through to the app below, and the
   widgets stay clickable. Qt uses `QWindow::setMask` (all platforms); tauri, egui and win-d2d use
   `SetWindowRgn` (`clip` crate) on Windows, and off Windows tauri and egui pass every click through.

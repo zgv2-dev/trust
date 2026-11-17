@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widget reference</title>
+<!-- The approved look. Open this file in a browser at 100% zoom, judge the widgets over several
+     backgrounds, then export the reference PNG the bench scores every renderer against. -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 13px system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; }
+  #bar { position: fixed; left: 40px; bottom: 24px; display: flex; gap: 8px; align-items: center;
+    padding: 8px 10px; border-radius: 8px; background: rgba(20,20,20,0.85); color: #eee; }
+  button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid #555;
+    background: #2a2a2a; color: #eee; cursor: pointer; }
+  button:hover { background: #3a3a3a; }
+  #info { color: #aaa; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="fg"></canvas>
+<div id="bar">
+  <button id="next" title="Space">New background</button>
+  <button id="freeze">Freeze at t=2</button>
+  <button id="export">Export reference PNG</button>
+  <span id="info"></span>
+</div>
+<script src="../tauri/dist/widget.js"></script>
+<script>
+  const { W, H, FREEZE } = Widget;
+  const dpr = devicePixelRatio || 1;
+  const os = /Mac/.test(navigator.userAgent) ? "macos" : /Win/.test(navigator.userAgent) ? "windows" : "linux";
+  const fileName = `ref-${os}-${+dpr.toFixed(2)}x.png`;
+  const bgc = document.getElementById("bg"), fgc = document.getElementById("fg");
+  const bg = bgc.getContext("2d"), fg = fgc.getContext("2d");
+  let frozen = false, kind = 0;
+  document.getElementById("info").textContent = `${os}, scale ${+dpr.toFixed(2)} → ${fileName}`;
+
+  function fit() {
+    for (const c of [bgc, fgc]) {
+      c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+      c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px";
+    }
+    paintBackground();
+  }
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const hsl = (l) => `hsl(${rnd(0, 360)},${rnd(30, 90)}%,${l ?? rnd(15, 85)}%)`;
+  // A few desktop-like backgrounds: wallpaper blobs, bright, dark, checkerboard, busy stripes.
+  const backgrounds = [
+    (w, h) => { bg.fillStyle = hsl(30); bg.fillRect(0, 0, w, h);
+      for (let i = 0; i < 12; i++) { const x = rnd(0, w), y = rnd(0, h), r = rnd(100, 600);
+        const g = bg.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, hsl()); g.addColorStop(1, "transparent");
+        bg.fillStyle = g; bg.fillRect(0, 0, w, h); } },
+    (w, h) => { const g = bg.createLinearGradient(0, 0, w, h); g.addColorStop(0, hsl(92)); g.addColorStop(1, hsl(75));
+      bg.fillStyle = g; bg.fillRect(0, 0, w, h); },
+    (w, h) => { const g = bg.createLinearGradient(0, 0, 0, h); g.addColorStop(0, hsl(4)); g.addColorStop(1, hsl(14));
+      bg.fillStyle = g; bg.fillRect(0, 0, w, h); },
+    (w, h) => { const s = 16, a = hsl(70), b = hsl(40);
+      for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) {
+        bg.fillStyle = (x / s + y / s) % 2 ? a : b; bg.fillRect(x, y, s, s); } },
+    (w, h) => { for (let x = 0; x < w; x += 6) { bg.fillStyle = hsl(); bg.fillRect(x, 0, 6, h); } },
+  ];
+
+  function paintBackground() {
+    bg.setTransform(dpr, 0, 0, dpr, 0, 0);
+    backgrounds[kind](innerWidth, innerHeight);
+  }
+
+  const start = performance.now();
+  function tick(now) {
+    const t = frozen ? FREEZE : (now - start) / 1000;
+    fg.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fg.clearRect(0, 0, innerWidth, innerHeight);
+    for (let p = 0; p < 4; p++) { const [x, y] = Widget.origin(p); Widget.draw(fg, x, y, t); }
+    requestAnimationFrame(tick);
+  }
+
+  function next() { kind = (kind + 1 + Math.floor(Math.random() * (backgrounds.length - 1))) % backgrounds.length; paintBackground(); }
+
+  // One widget at t=FREEZE on a transparent background, at this screen's scale.
+  function exportReference() {
+    const c = document.createElement("canvas");
+    c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+    const g = c.getContext("2d");
+    g.scale(dpr, dpr);
+    Widget.draw(g, 0, 0, FREEZE);
+    c.toBlob((blob) => {
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: fileName });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, "image/png");
+  }
+
+  document.getElementById("next").onclick = next;
+  document.getElementById("freeze").onclick = (e) => {
+    frozen = !frozen;
+    e.target.textContent = frozen ? "Animate" : "Freeze at t=2";
+  };
+  document.getElementById("export").onclick = exportReference;
+  addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); next(); } });
+  addEventListener("resize", fit);
+  kind = Math.floor(Math.random() * backgrounds.length);
+  fit();
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

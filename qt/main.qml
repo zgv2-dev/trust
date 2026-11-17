@@ -7,14 +7,16 @@ QtObject {
     id: root
     required property int count
     required property bool overlay
+    required property real freeze
     readonly property color accent: "#50ff78"
     signal fps(int n)
 
     component Panel: Item {
         id: panel
         width: 240; height: 110
-        property real t: 0
-        FrameAnimation { running: true; onTriggered: panel.t += frameTime }
+        property real clock: 0
+        readonly property real t: root.freeze >= 0 ? root.freeze : clock
+        FrameAnimation { running: true; onTriggered: panel.clock += frameTime }
         Rectangle {
             anchors.fill: parent; radius: 4
             color: Qt.rgba(3 / 255, 10 / 255, 3 / 255, 0.25)

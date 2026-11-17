@@ -1,14 +1,23 @@
-// Runs each widget variant with the same scene and window count, and reports what it costs.
+// Runs each widget variant with the same scene and window count, and reports what it costs, how
+// fast it starts, and how close it looks to the reference (reference/index.html).
+mod capture;
+mod look;
+mod measure;
+mod probe;
+mod report;
 mod sample;
 mod variants;
 
-use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{env, fs, thread};
-use sysinfo::{Pid, System};
+use std::{env, fs};
+use sysinfo::System;
 use variants::{runs_here, VARIANTS};
+
+const COLUMNS: &[&str] = &[
+    "app CPU % mean", "app CPU % max", "app RSS MB", "processes", "compositor CPU %", "fps per window",
+    "cold start ms", "warm start ms", "widgets found", "placement off px", "look error %",
+];
 
 /// First of $BENCH_PYTHON, python3, python that can import PySide6.
 fn python() -> Option<String> {
@@ -18,17 +27,48 @@ fn python() -> Option<String> {
     })
 }
 
-fn arg(name: &str, default: u64) -> u64 {
-    let args: Vec<String> = env::args().collect();
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)?.parse().ok()).unwrap_or(default)
+fn arg(name: &str) -> Option<String> {
+    env::args().skip_while(|a| a != name).nth(1)
+}
+
+fn flag(name: &str) -> bool {
+    env::args().any(|a| a == name)
+}
+
+/// reference/ref-<os>-<scale>x.png: `--scale` picks one, else the only one for this OS.
+fn reference(dir: &Path) -> Result<(image::RgbaImage, f64), String> {
+    let prefix = format!("ref-{}-", env::consts::OS);
+    let mut found: Vec<String> = fs::read_dir(dir).into_iter().flatten().flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|f| f.starts_with(&prefix) && f.ends_with("x.png"))
+        .collect();
+    if let Some(scale) = arg("--scale") {
+        found.retain(|f| *f == format!("{prefix}{scale}x.png"));
+    }
+    let [file] = &found[..] else {
+        return Err(format!("{} {prefix}*x.png in reference/; export it from reference/index.html or pass --scale", found.len()));
+    };
+    let scale = file[prefix.len()..file.len() - 5].parse().map_err(|_| format!("bad scale in {file}"))?;
+    let img = image::open(dir.join(file)).map_err(|e| format!("{file}: {e}"))?;
+    Ok((img.to_rgba8(), scale))
 }
 
 fn main() {
-    let (windows, warmup, secs) = (arg("--windows", 4), arg("--warmup", 5), arg("--secs", 20));
-    let only = env::args().skip_while(|a| a != "--only").nth(1);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let results = root.join("results");
+    let prefix = format!("{}-{}-", env::consts::OS, env::consts::ARCH);
+    if flag("--summary") {
+        let out = report::summary(&results, &prefix);
+        print!("{out}");
+        fs::write(results.join(format!("{prefix}summary.md")), out).expect("write summary");
+        return;
+    }
+    let num = |name: &str, default: u64| arg(name).and_then(|v| v.parse().ok()).unwrap_or(default);
+    let (windows, warmup, secs) = (num("--windows", 4), num("--warmup", 5), num("--secs", 20));
+    let only = arg("--only");
     // one package at a time, so a missing system library skips only that package's rows
     let mut failed = vec![];
-    if !env::args().any(|a| a == "--no-build") {
+    if !flag("--no-build") {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let mut packages: Vec<&str> =
             VARIANTS.iter().filter(|v| runs_here(v.4) && v.1.starts_with("bench-")).map(|v| v.1).collect();
@@ -41,108 +81,84 @@ fn main() {
         }
     }
     // variants are always built with --release, even when bench itself runs as a debug build
-    let dir = env::current_exe().unwrap().parent().unwrap().with_file_name("release");
+    let bin_dir = env::current_exe().unwrap().parent().unwrap().with_file_name("release");
+    let stamp = report::stamp();
+    let shots: PathBuf = results.join(format!("{prefix}{stamp}"));
+    fs::create_dir_all(&shots).expect("create results dir");
+    let reference = reference(&root.join("reference"));
     let mut sys = System::new_all().expect("read process list");
     sys.refresh_cpu_all();
     let cpu = sys.cpus().first().map(|c| c.brand().trim().to_string()).unwrap_or_default();
-    let os = System::long_os_version().unwrap_or_default();
+    let os_name = System::long_os_version().unwrap_or_default();
     let python = python();
-    let qt_script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../qt/main.py");
+    let qt_script = root.join("qt/main.py");
+    let look_note = match &reference {
+        Ok((_, scale)) => format!("Look compared with the reference at scale {scale}; pictures in `{prefix}{stamp}/`."),
+        Err(e) => format!("Look not compared: {e}."),
+    };
     let mut out = format!(
-        "# Widget bench: {os} ({}), {cpu}, {} logical CPUs\n\n{windows} widgets, {warmup}s warmup, {secs}s measured. \
-         CPU % is of one core (100 = one full core).\n\n\
-         | variant | app CPU % mean | app CPU % max | app RSS MB | processes | compositor CPU % | fps per window |\n\
-         |---|---|---|---|---|---|---|\n",
+        "# Widget bench: {os_name} ({}), {cpu}, {} logical CPUs, {stamp} UTC\n\n{windows} widgets, {warmup}s warmup, \
+         {secs}s measured. CPU % is of one core (100 = one full core). {look_note}\n\n| variant | {} |\n|{}\n",
         env::consts::ARCH,
-        sys.cpus().len()
+        sys.cpus().len(),
+        COLUMNS.join(" | "),
+        "---|".repeat(COLUMNS.len() + 1)
     );
+    let skipped = |name: &str, why: &str| format!("| {name} | skipped: {why} |{}\n", " |".repeat(COLUMNS.len() - 1));
     for (name, bin, mode, envs, os) in VARIANTS {
         if only.as_deref().is_some_and(|o| o != *name) {
             continue;
         }
         eprintln!("== {name}");
-        let cmd = match (*bin, &python) {
-            ("", _) => None,
-            ("qt", Some(py)) => Some(Command::new(py)).map(|mut c| { c.arg(&qt_script); c }),
-            _ if !runs_here(os) => {
-                out += &format!("| {name} | skipped: {} only | | | | | |\n", os.join(", "));
-                continue;
-            }
-            _ if failed.contains(bin) => {
-                out += &format!("| {name} | skipped: build failed | | | | | |\n");
-                continue;
-            }
-            ("qt", None) => {
-                out += &format!("| {name} | skipped: no Python with PySide6 (pip install PySide6) | | | | | |\n");
-                continue;
-            }
-            _ => Some(Command::new(dir.join(format!("{bin}{}", env::consts::EXE_SUFFIX)))),
+        let why = if !runs_here(os) {
+            Some(format!("{} only", os.join(", ")))
+        } else if failed.contains(bin) {
+            Some("build failed".into())
+        } else if *bin == "qt" && python.is_none() {
+            Some("no Python with PySide6 (pip install PySide6)".into())
+        } else {
+            None
         };
-        let row = run(&mut sys, cmd, mode, envs, windows, warmup, secs);
+        if let Some(why) = why {
+            out += &skipped(name, &why);
+            continue;
+        }
+        let make = || {
+            let mut c = match *bin {
+                "qt" => Command::new(python.as_ref().unwrap()),
+                _ => Command::new(bin_dir.join(format!("{bin}{}", env::consts::EXE_SUFFIX))),
+            };
+            if *bin == "qt" {
+                c.arg(&qt_script);
+            }
+            c.envs(envs.iter().copied()).env("BENCH_WINDOWS", windows.to_string()).env("BENCH_MODE", mode);
+            c
+        };
+        let row = if bin.is_empty() {
+            format!("{} | | | | |", measure::run(&mut sys, None, warmup, secs))
+        } else {
+            if flag("--purge") && !probe::purge_caches() {
+                eprintln!("   --purge: couldn't drop the file cache (run `sudo -v` first); cold start is only a first launch");
+            }
+            let image = shots.join(format!("{}.png", name.replace(' ', "-")));
+            let look = reference.as_ref().ok().map(|(r, scale)| probe::Look {
+                reference: r,
+                scale: *scale,
+                widgets: windows as usize,
+                image: &image,
+            });
+            let probed = probe::probe(&mut sys, &make, look, &shots.join("screenshot.png"));
+            format!("{} | {probed}", measure::run(&mut sys, Some(make()), warmup, secs))
+        };
         out += &format!("| {name} | {row} |\n");
         eprintln!("   {row}");
     }
+    let _ = fs::remove_file(shots.join("screenshot.png"));
     print!("\n{out}");
     if only.is_some() {
-        return; // a partial run must not overwrite a full results file
+        return; // a partial run doesn't go into the results that the summary accumulates
     }
-    let file = format!("results-{}-{}.md", env::consts::OS, env::consts::ARCH);
-    fs::File::create(&file).and_then(|mut f| f.write_all(out.as_bytes())).expect("write results");
-    eprintln!("\nsaved {file}");
-}
-
-fn run(sys: &mut System, cmd: Option<Command>, mode: &str, envs: &[(&str, &str)], windows: u64, warmup: u64, secs: u64) -> String {
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-    let preexisting = sys.processes().keys().copied().collect();
-    let fps = Arc::new(Mutex::new(Vec::<(Instant, f64)>::new()));
-    let mut child = cmd.map(|mut cmd| {
-        let mut c = cmd
-            .envs(envs.iter().copied())
-            .env("BENCH_WINDOWS", windows.to_string())
-            .env("BENCH_MODE", mode)
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|e| panic!("start {:?}: {e}", cmd.get_program()));
-        let (stdout, fps) = (c.stdout.take().unwrap(), fps.clone());
-        thread::spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(n) = line.strip_prefix("fps ").and_then(|n| n.trim().parse().ok()) {
-                    fps.lock().unwrap().push((Instant::now(), n));
-                }
-            }
-        });
-        c
-    });
-    let root = child.as_ref().map(|c| Pid::from_u32(c.id()));
-    thread::sleep(Duration::from_secs(warmup));
-    sample::sample(sys, root, &preexisting); // primes per-process CPU deltas
-    let start = Instant::now();
-    let mut samples = vec![];
-    while start.elapsed() < Duration::from_secs(secs) {
-        let windowserver = if cfg!(target_os = "macos") { sample::windowserver_cpu(sys) } else { None };
-        if windowserver.is_none() {
-            thread::sleep(Duration::from_secs(1));
-        }
-        if child.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_some()) {
-            return "exited early | | | | | ".into();
-        }
-        let mut s = sample::sample(sys, root, &preexisting);
-        s.comp_cpu = windowserver.unwrap_or(s.comp_cpu);
-        samples.push(s);
-    }
-    if let (Some(c), Some(root)) = (child.as_mut(), root) {
-        sample::kill_tree(sys, root, &preexisting);
-        let _ = c.kill();
-        let _ = c.wait();
-    }
-    thread::sleep(Duration::from_secs(2)); // let the compositor settle before the next variant
-    let n = samples.len().max(1) as f32;
-    let mean = samples.iter().map(|s| s.app_cpu).sum::<f32>() / n;
-    let max = samples.iter().map(|s| s.app_cpu).fold(0.0, f32::max);
-    let rss = samples.iter().map(|s| s.app_rss).max().unwrap_or(0) as f64 / 1e6;
-    let procs = samples.iter().map(|s| s.procs).max().unwrap_or(0);
-    let comp = samples.iter().map(|s| s.comp_cpu).sum::<f32>() / n;
-    let fps: Vec<f64> = fps.lock().unwrap().iter().filter(|(t, _)| *t >= start).map(|(_, f)| *f).collect();
-    let fps = if fps.is_empty() { "-".into() } else { format!("{:.0}", fps.iter().sum::<f64>() / fps.len() as f64) };
-    format!("{mean:.1} | {max:.1} | {rss:.0} | {procs} | {comp:.1} | {fps}")
+    let file = results.join(format!("{prefix}{stamp}.md"));
+    fs::write(&file, out).expect("write results");
+    eprintln!("\nsaved {}", file.display());
 }
