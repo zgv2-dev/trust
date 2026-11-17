@@ -34,7 +34,7 @@ mod app {
     static FIRST: std::sync::Once = std::sync::Once::new();
 
     fn origin(i: usize) -> (f64, f64) {
-        (40.0 + 260.0 * (i % 4) as f64, 40.0 + 140.0 * (i / 4) as f64)
+        (40.0 + 260.0 * (i % 4) as f64, 60.0 + 140.0 * (i / 4) as f64)
     }
 
     fn panels(n: usize) -> cairo::Region {

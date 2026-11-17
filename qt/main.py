@@ -23,7 +23,7 @@ if os.environ.get("BENCH_MODE") == "overlay":
     # input mask = the panels: clicks elsewhere fall through to any app below, panels stay clickable
     mask = QRegion()
     for i in range(int(os.environ.get("BENCH_WINDOWS", "4"))):
-        mask += QRegion(QRect(40 + 260 * (i % 4), 40 + 140 * (i // 4), 240, 110))
+        mask += QRegion(QRect(40 + 260 * (i % 4), 60 + 140 * (i // 4), 240, 110))
     for window in app.topLevelWindows():
         window.setMask(mask)
 # the bench reads "fps N" lines and one "first-frame" line from stdout

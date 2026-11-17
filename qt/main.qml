@@ -53,7 +53,7 @@ QtObject {
             // no Qt.Tool on macOS: tool windows there are panels that hide while the app isn't active
             flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | (Qt.platform.os === "osx" ? 0 : Qt.Tool)
             x: root.overlay ? 0 : 40 + 260 * (index % 4) - root.margin
-            y: root.overlay ? 0 : 40 + 140 * Math.floor(index / 4) - root.margin
+            y: root.overlay ? 0 : 60 + 140 * Math.floor(index / 4) - root.margin
             width: root.overlay ? Screen.width : Look.W + 2 * root.margin
             height: root.overlay ? Screen.height : Look.H + 2 * root.margin
             onFrameSwapped: frames++
@@ -63,7 +63,7 @@ QtObject {
                 Panel {
                     required property int index
                     x: root.overlay ? 40 + 260 * (index % 4) : root.margin
-                    y: root.overlay ? 40 + 140 * Math.floor(index / 4) : root.margin
+                    y: root.overlay ? 60 + 140 * Math.floor(index / 4) : root.margin
                 }
             }
         }

@@ -39,7 +39,7 @@
   const el = (parent, cls, css) => parent.appendChild(Object.assign(document.createElement("div"), { className: cls, style: css || "" }));
   const motors = [];
   for (let p = 0; p < Math.max(n, 1); p++) {
-    const [x, y] = n ? [40 + 260 * (p % 4), 40 + 140 * Math.floor(p / 4)] : [8, 8];
+    const [x, y] = n ? [40 + 260 * (p % 4), 60 + 140 * Math.floor(p / 4)] : [8, 8];
     const panel = el(document.body, "panel", `left:${x}px;top:${y}px`);
     el(panel, "glow");
     const fill = el(panel, "fill");

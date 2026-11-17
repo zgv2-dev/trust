@@ -79,7 +79,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let w = Widget::new()?;
         w.set_freeze(freeze);
         // the window includes halo::MARGIN around the panel for its glow
-        let at = LogicalPosition::new(40.0 + 260.0 * (i % 4) as f32 - halo::MARGIN, 40.0 + 140.0 * (i / 4) as f32 - halo::MARGIN);
+        let at = LogicalPosition::new(40.0 + 260.0 * (i % 4) as f32 - halo::MARGIN, 60.0 + 140.0 * (i / 4) as f32 - halo::MARGIN);
         w.window().set_position(at);
         let timer = count_frames(w.window());
         w.show()?;

@@ -17,12 +17,13 @@ pub fn to_rects(hwnd: *mut std::ffi::c_void, rects: &[(i32, i32, i32, i32)]) {
     }
 }
 
-/// Physical-pixel rectangles of the bench's widget grid: `n` panels of 240x110 at `scale`.
+/// Physical-pixel rectangles of the bench's widget grid: `n` panels of 240x110 at `scale`. The top
+/// row is at y = 60 so windows (8 px larger for the glow) clear the ~37 pt macOS menu bar.
 pub fn panels(n: usize, scale: f64) -> Vec<(i32, i32, i32, i32)> {
     let px = |v: f64| (v * scale).round() as i32;
     (0..n)
         .map(|i| {
-            let (x, y) = (40.0 + 260.0 * (i % 4) as f64, 40.0 + 140.0 * (i / 4) as f64);
+            let (x, y) = (40.0 + 260.0 * (i % 4) as f64, 60.0 + 140.0 * (i / 4) as f64);
             (px(x), px(y), px(x + 240.0) - px(x), px(y + 110.0) - px(y))
         })
         .collect()
@@ -31,6 +32,6 @@ pub fn panels(n: usize, scale: f64) -> Vec<(i32, i32, i32, i32)> {
 #[test]
 fn panels_scale_to_physical_pixels() {
     assert_eq!(panels(5, 1.5), vec![
-        (60, 60, 360, 165), (450, 60, 360, 165), (840, 60, 360, 165), (1230, 60, 360, 165), (60, 270, 360, 165),
+        (60, 90, 360, 165), (450, 90, 360, 165), (840, 90, 360, 165), (1230, 90, 360, 165), (60, 300, 360, 165),
     ]);
 }

@@ -3,7 +3,7 @@
 // against a background that never changes, instead of whatever terminal or window sits there.
 use eframe::egui::{self, Color32, Pos2, Rect, Vec2, ViewportBuilder};
 
-/// Covers the widget grid (panels at 40 + 260 i, 40 + 140 j, 240 x 110, plus glow), logical px.
+/// Covers the widget grid (panels at 40 + 260 i, 60 + 140 j, 240 x 110, plus glow), logical px.
 const SIZE: [f32; 2] = [1140.0, 340.0];
 const CELL: f32 = 16.0;
 

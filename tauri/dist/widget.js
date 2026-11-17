@@ -62,7 +62,7 @@ window.Widget = (() => {
   }
 
   // Where panel p sits in an overlay, in CSS pixels; the same grid in every variant.
-  const origin = (p) => [40 + 260 * (p % 4), 40 + 140 * Math.floor(p / 4)];
+  const origin = (p) => [40 + 260 * (p % 4), 60 + 140 * Math.floor(p / 4)];
 
   return { W, H, MARGIN, FREEZE, ready, origin, drawStatic, drawDynamic, draw };
 })();

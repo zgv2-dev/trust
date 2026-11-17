@@ -41,7 +41,7 @@ mod app {
     }
 
     fn origin(i: usize) -> (f32, f32) {
-        (40.0 + 260.0 * (i % 4) as f32, 40.0 + 140.0 * (i / 4) as f32)
+        (40.0 + 260.0 * (i % 4) as f32, 60.0 + 140.0 * (i / 4) as f32)
     }
 
     pub unsafe fn run() -> Result<()> {

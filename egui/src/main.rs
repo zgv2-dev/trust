@@ -24,7 +24,7 @@ struct Bench {
 }
 
 fn pos(i: usize) -> Pos2 {
-    pos2(40.0 + 260.0 * (i % 4) as f32, 40.0 + 140.0 * (i / 4) as f32)
+    pos2(40.0 + 260.0 * (i % 4) as f32, 60.0 + 140.0 * (i / 4) as f32)
 }
 
 /// Window i: the panel plus MARGIN on every side for its outer glow.

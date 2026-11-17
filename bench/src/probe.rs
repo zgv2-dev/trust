@@ -93,7 +93,7 @@ pub fn probe(sys: &mut System, make: &dyn Fn() -> Command, look: Option<Look>, s
     };
     let px = |v: f64| (v * look.scale).round() as u32;
     let expected: Vec<(u32, u32)> = (0..look.widgets)
-        .map(|i| (px(40.0 + 260.0 * (i % 4) as f64 - MARGIN), px(40.0 + 140.0 * (i / 4) as f64 - MARGIN)))
+        .map(|i| (px(40.0 + 260.0 * (i % 4) as f64 - MARGIN), px(60.0 + 140.0 * (i / 4) as f64 - MARGIN)))
         .collect();
     let matches = look::find(&before, &after, &post, look.reference, &expected);
     let _ = look::side_by_side(&before, &after, look.reference, &matches).save(look.image);

@@ -98,7 +98,7 @@ slint::slint! {
         for i in count: Panel {
             freeze: root.freeze;
             x: (40 + 260 * mod(i, 4)) * 1px;
-            y: (40 + 140 * floor(i / 4)) * 1px;
+            y: (60 + 140 * floor(i / 4)) * 1px;
         }
     }
 }

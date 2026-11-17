@@ -50,7 +50,7 @@ fn main() {
                     .title(format!("tauri {i}"))
                     // the panel plus 8 px on every side for its outer glow (MARGIN in widget.js)
                     .inner_size(240.0 + 16.0, 110.0 + 16.0)
-                    .position(40.0 + 260.0 * (i % 4) as f64 - 8.0, 40.0 + 140.0 * (i / 4) as f64 - 8.0)
+                    .position(40.0 + 260.0 * (i % 4) as f64 - 8.0, 60.0 + 140.0 * (i / 4) as f64 - 8.0)
                     .transparent(true)
                     .decorations(false)
                     .always_on_top(true)

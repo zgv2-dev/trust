@@ -17,7 +17,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-static D2D1_POINT_2F origin(int i) { return D2D1::Point2F(40.0f + 260.0f * (i % 4), 40.0f + 140.0f * (i / 4)); }
+static D2D1_POINT_2F origin(int i) { return D2D1::Point2F(40.0f + 260.0f * (i % 4), 60.0f + 140.0f * (i / 4)); }
 
 static int px(float v, float scale) { return (int)lroundf(v * scale); }
 
