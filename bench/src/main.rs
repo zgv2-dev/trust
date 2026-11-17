@@ -75,6 +75,7 @@ fn main() {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let mut packages: Vec<&str> =
             VARIANTS.iter().filter(|v| runs_here(v.4) && v.1.starts_with("bench-")).map(|v| v.1).collect();
+        packages.push("bench-backdrop");
         packages.dedup();
         for p in packages {
             if !Command::new(&cargo).args(["build", "--release", "-p", p]).status().is_ok_and(|s| s.success()) {
@@ -107,6 +108,15 @@ fn main() {
         COLUMNS.join(" | "),
         "---|".repeat(COLUMNS.len() + 1)
     );
+    // static backdrop behind the widgets for the whole run, so screenshots see a fixed background
+    let backdrop = Command::new(bin_dir.join(format!("bench-backdrop{}", env::consts::EXE_SUFFIX)))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match &backdrop {
+        Ok(_) => std::thread::sleep(std::time::Duration::from_secs(2)),
+        Err(e) => eprintln!("no backdrop ({e}); screenshots see whatever is behind the widgets"),
+    }
     let skipped = |name: &str, why: &str| format!("| {name} | skipped: {why} |{}\n", " |".repeat(COLUMNS.len() - 1));
     for (name, bin, mode, envs, os) in VARIANTS {
         if only.as_deref().is_some_and(|o| o != *name) {
@@ -157,6 +167,10 @@ fn main() {
         eprintln!("   {row}");
     }
     let _ = fs::remove_file(shots.join("screenshot.png"));
+    if let Ok(mut b) = backdrop {
+        let _ = b.kill();
+        let _ = b.wait();
+    }
     print!("\n{out}");
     if only.is_some() {
         return; // a partial run doesn't go into the results that the summary accumulates

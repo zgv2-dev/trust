@@ -74,10 +74,11 @@ launches the app with the animation frozen (cold start), waits 3 s, takes anothe
 closes it, launches it 3 more times (warm starts), then measures 5 s warmup + 20 s with the
 animation running. About 45 s per variant, 10–15 minutes in total. Windows open and close on
 their own. Don't touch the machine or move windows while it runs, and keep other apps idle.
-Keep the strip where the widgets go (40–1080 × 40–300 logical px from the top-left) clear: put the
-terminal below it. A third screenshot after the app closes marks background pixels that changed by
-themselves (a scrolling terminal, a title bar dimming when an app takes focus); the look error
-skips those, but it can only score what it can see.
+For the whole run a backdrop window (`backdrop/`, a fixed checker pattern) covers the top-left
+1140 × 340 logical px, so the widgets are always photographed over the same background. The
+widgets are always-on-top windows and draw over it. On Wayland the compositor places the backdrop
+wherever it likes, so it may not sit behind the widgets. A third screenshot after each app closes
+also marks pixels that changed by themselves, and the look error skips those.
 
 Each run writes `results/<os>-<arch>-<UTC time>.md` and a folder of the same name with one
 picture per variant: the expected look on top, the actual screen below. Runs accumulate.
