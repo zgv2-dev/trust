@@ -46,7 +46,17 @@ With a virtualenv, set `BENCH_PYTHON` to its interpreter.
 canvas (`tauri/dist/widget.js`) over a random background. Open it in a browser at 100% zoom on
 the machine you'll test, check the look over a few backgrounds (Space for the next one), then
 press **Export reference PNG** and move the file (`ref-<os>-<scale>x.png`) into `reference/`.
-Export again after any change to `widget.js`, and on each OS: fonts differ between systems.
+Export again after any change to `widget.js`, and on each OS: text rendering differs between
+systems. The font is Space Mono (`fonts/`, SIL OFL), embedded as `tauri/dist/space-mono.js` because
+browsers won't load font files from `file://`. After changing the font, regenerate that file:
+
+```
+{ head -2 tauri/dist/space-mono.js; printf 'window.SPACE_MONO = "data:font/ttf;base64,'; \
+  base64 -i fonts/SpaceMono-Regular.ttf | tr -d '\n'; echo '";'; } > space-mono.tmp && mv space-mono.tmp tauri/dist/space-mono.js
+```
+
+The PNG includes 8 px around the panel for its outer glow. With separate 240x110 windows the
+glow falls outside the window, and the look error counts that.
 
 ### The bench
 

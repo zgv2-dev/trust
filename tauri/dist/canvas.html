@@ -11,9 +11,10 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script src="space-mono.js"></script>
 <script src="widget.js"></script>
 <script>
-  const { W, H } = Widget;
+  const { W, H, MARGIN: M } = Widget;
   const n = window.BENCH_N || 0; // set: overlay mode, n panels in one window; else one panel
   const freeze = window.BENCH_FREEZE; // set: draw this instant forever (for screenshots)
   const dpr = devicePixelRatio || 1;
@@ -26,9 +27,9 @@
   addEventListener("resize", fit);
   const pos = (p) => (n ? Widget.origin(p) : [0, 0]);
 
+  // static parts plus the glow margin around them, drawn once
   const bg = document.createElement("canvas");
-  bg.width = W * dpr; bg.height = H * dpr;
-  { const g = bg.getContext("2d"); g.scale(dpr, dpr); Widget.drawStatic(g); }
+  bg.width = (W + 2 * M) * dpr; bg.height = (H + 2 * M) * dpr;
 
   const start = performance.now();
   let frames = 0, last = start, first = true;
@@ -37,8 +38,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     for (let p = 0; p < Math.max(n, 1); p++) {
       const [x, y] = pos(p);
-      ctx.clearRect(x, y, W, H); // only panel areas; the rest of the canvas stays empty
-      ctx.drawImage(bg, x, y, W, H);
+      ctx.clearRect(x - M, y - M, W + 2 * M, H + 2 * M); // only panel areas; the rest stays empty
+      ctx.drawImage(bg, x - M, y - M, W + 2 * M, H + 2 * M);
       Widget.drawDynamic(ctx, x, y, t);
     }
     if (first) { window.__TAURI__.core.invoke("first_frame"); first = false; }
@@ -49,7 +50,12 @@
     }
     requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+  Widget.ready.then(() => {
+    const g = bg.getContext("2d");
+    g.scale(dpr, dpr); g.translate(M, M);
+    Widget.drawStatic(g);
+    requestAnimationFrame(tick);
+  });
 </script>
 </body>
 </html>

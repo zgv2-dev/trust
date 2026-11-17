@@ -26,9 +26,10 @@
   <button id="export">Export reference PNG</button>
   <span id="info"></span>
 </div>
+<script src="../tauri/dist/space-mono.js"></script>
 <script src="../tauri/dist/widget.js"></script>
 <script>
-  const { W, H, FREEZE } = Widget;
+  const { W, H, MARGIN, FREEZE } = Widget;
   const dpr = devicePixelRatio || 1;
   const os = /Mac/.test(navigator.userAgent) ? "macos" : /Win/.test(navigator.userAgent) ? "windows" : "linux";
   const fileName = `ref-${os}-${+dpr.toFixed(2)}x.png`;
@@ -79,13 +80,13 @@
 
   function next() { kind = (kind + 1 + Math.floor(Math.random() * (backgrounds.length - 1))) % backgrounds.length; paintBackground(); }
 
-  // One widget at t=FREEZE on a transparent background, at this screen's scale.
+  // One widget at t=FREEZE with its glow margin on a transparent background, at this screen's scale.
   function exportReference() {
     const c = document.createElement("canvas");
-    c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+    c.width = Math.round((W + 2 * MARGIN) * dpr); c.height = Math.round((H + 2 * MARGIN) * dpr);
     const g = c.getContext("2d");
     g.scale(dpr, dpr);
-    Widget.draw(g, 0, 0, FREEZE);
+    Widget.draw(g, MARGIN, MARGIN, FREEZE);
     c.toBlob((blob) => {
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: fileName });
       a.click();
@@ -103,7 +104,7 @@
   addEventListener("resize", fit);
   kind = Math.floor(Math.random() * backgrounds.length);
   fit();
-  requestAnimationFrame(tick);
+  Widget.ready.then(() => requestAnimationFrame(tick));
 </script>
 </body>
 </html>

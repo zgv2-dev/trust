@@ -1,10 +1,15 @@
 // The widget's approved look, in canvas 2D. Shared by the reference page (reference/index.html)
 // and the tauri-canvas variant; every other renderer is scored against PNGs exported from the
 // reference page. Classic script (not a module) so the reference page also works from file://.
+// Needs space-mono.js loaded first; draw only after `Widget.ready` resolves (the font is loaded).
 window.Widget = (() => {
   const W = 240, H = 110, R = 20, PIE_Y = 50, ACC = "rgb(80,255,120)";
   const FREEZE = 2; // seconds; the bench sets BENCH_FREEZE to this when it takes screenshots
-  const FONT = "12px Menlo, Consolas, 'DejaVu Sans Mono', monospace";
+  const FONT = "12px 'Space Mono'";
+  const MARGIN = 8; // room around the panel for its outer glow; the reference PNG includes it
+  const font = new FontFace("Space Mono", `url(${window.SPACE_MONO})`);
+  document.fonts.add(font);
+  const ready = font.load();
   const pieX = (i) => 32 + i * 52;
   const pwm = (t, i) => 0.5 + 0.45 * Math.sin(t * 1.3 + i); // fake PWM
 
@@ -12,6 +17,11 @@ window.Widget = (() => {
   // change, so callers may draw them once into a cache.
   function drawStatic(g) {
     g.save();
+    g.save(); // tiny outer glow, drawn under the panel
+    g.shadowColor = "rgba(80,255,120,0.45)"; g.shadowBlur = 6;
+    g.strokeStyle = "rgba(80,255,120,0.35)";
+    g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 4); g.stroke();
+    g.restore();
     g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 4);
     g.fillStyle = "rgba(3,10,3,0.25)"; g.fill();
     g.save(); g.clip();
@@ -54,5 +64,5 @@ window.Widget = (() => {
   // Where panel p sits in an overlay, in CSS pixels; the same grid in every variant.
   const origin = (p) => [40 + 260 * (p % 4), 40 + 140 * Math.floor(p / 4)];
 
-  return { W, H, FREEZE, origin, drawStatic, drawDynamic, draw };
+  return { W, H, MARGIN, FREEZE, ready, origin, drawStatic, drawDynamic, draw };
 })();

@@ -13,6 +13,8 @@ use sysinfo::{Pid, System};
 /// Must match FREEZE in tauri/dist/widget.js, which the reference PNGs are exported at.
 const FREEZE: &str = "2";
 const WARM_RUNS: usize = 3;
+/// Must match MARGIN in widget.js: the reference PNG has this much glow room around the panel.
+const MARGIN: f64 = 8.0;
 
 pub struct Look<'a> {
     pub reference: &'a RgbaImage,
@@ -89,7 +91,7 @@ pub fn probe(sys: &mut System, make: &dyn Fn() -> Command, look: Option<Look>, s
     };
     let px = |v: f64| (v * look.scale).round() as u32;
     let expected: Vec<(u32, u32)> = (0..look.widgets)
-        .map(|i| (px(40.0 + 260.0 * (i % 4) as f64), px(40.0 + 140.0 * (i / 4) as f64)))
+        .map(|i| (px(40.0 + 260.0 * (i % 4) as f64 - MARGIN), px(40.0 + 140.0 * (i / 4) as f64 - MARGIN)))
         .collect();
     let matches = look::find(&before, &after, look.reference, &expected);
     let _ = look::side_by_side(&before, &after, look.reference, &matches).save(look.image);
