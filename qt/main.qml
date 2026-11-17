@@ -71,7 +71,8 @@ QtObject {
             property int frames: 0
             visible: true
             color: "transparent"
-            flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+            // no Qt.Tool on macOS: tool windows there are panels that hide while the app isn't active
+            flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | (Qt.platform.os === "osx" ? 0 : Qt.Tool)
             x: root.overlay ? 0 : 40 + 260 * (index % 4)
             y: root.overlay ? 0 : 40 + 140 * Math.floor(index / 4)
             width: root.overlay ? Screen.width : 240

@@ -113,8 +113,20 @@ fn main() -> Result<(), slint::PlatformError> {
             w.current_monitor().map(|m| m.size())
         });
         if let Some(Some(size)) = size {
-            o.window().set_position(PhysicalPosition::new(0, 0));
-            o.window().set_size(slint::PhysicalSize::new(size.width, size.height));
+            // grow first, then move: macOS centers the small first window and can drop a move made
+            // before the resize; repeat once the window is up in case the first attempt is lost
+            let place = move |w: &slint::Window| {
+                w.set_size(slint::PhysicalSize::new(size.width, size.height));
+                w.set_position(PhysicalPosition::new(0, 0));
+                w.with_winit_window(|w| w.set_outer_position(slint::winit_030::winit::dpi::PhysicalPosition::new(0, 0)));
+            };
+            place(o.window());
+            let weak = o.as_weak();
+            Timer::single_shot(Duration::from_millis(300), move || {
+                if let Some(o) = weak.upgrade() {
+                    place(o.window());
+                }
+            });
         }
         return slint::run_event_loop();
     }
