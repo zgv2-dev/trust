@@ -113,22 +113,27 @@ fn main() -> Result<(), slint::PlatformError> {
         let _timer = count_frames(o.window());
         o.window().set_position(PhysicalPosition::new(0, 0)); // before show: applied at creation
         o.show()?;
-        // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
-        let size = o.window().with_winit_window(|w| {
-            w.set_cursor_hittest(false).ok();
-            w.current_monitor().map(|m| m.size().to_logical::<f32>(m.scale_factor()))
-        });
-        if let Some(Some(size)) = size {
-            o.set_w(size.width);
-            o.set_h(size.height);
+        // the native window only exists once the event loop runs, so size and place it from there
+        let weak = o.as_weak();
+        Timer::single_shot(Duration::from_millis(100), move || {
+            let Some(o) = weak.upgrade() else { return };
+            // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
+            let size = o.window().with_winit_window(|w| {
+                w.set_cursor_hittest(false).ok();
+                w.current_monitor().map(|m| m.size().to_logical::<f32>(m.scale_factor()))
+            });
+            if let Some(Some(size)) = size {
+                o.set_w(size.width);
+                o.set_h(size.height);
+            }
             // growing can shift the window on macOS (it keeps the bottom-left corner): move it back
             let weak = o.as_weak();
-            Timer::single_shot(Duration::from_millis(300), move || {
+            Timer::single_shot(Duration::from_millis(200), move || {
                 if let Some(o) = weak.upgrade() {
                     o.window().set_position(PhysicalPosition::new(0, 0));
                 }
             });
-        }
+        });
         return slint::run_event_loop();
     }
     let mut keep = vec![];
