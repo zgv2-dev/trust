@@ -1,6 +1,7 @@
 // Finds the widgets in a screenshot and scores how far each strays from the reference look. The
 // expected image at a spot is the reference PNG composited over the same spot of a screenshot taken
-// before the app started, so any static desktop background works.
+// before the app started. Pixels that differ between that screenshot and one taken after the app
+// closed (a terminal scrolling, a title bar dimming on focus change) are background noise, ignored.
 use image::RgbaImage;
 
 /// One expected widget: where it was found (if at all), physical pixels, and its look error.
@@ -11,13 +12,13 @@ pub struct Match {
     pub error: f64,
 }
 
-/// A spot counts as a widget when its error is below this.
-const FOUND: f64 = 0.5;
+/// A spot counts as a widget when its coarse (8x8-averaged) error is below this; the averaging
+/// forgives small misdrawings, which the full-resolution look error then reports.
+const FOUND: f64 = 0.6;
+/// Summed RGB difference above which a pixel's background counts as changed during the shot.
+const NOISE: u32 = 30;
 /// Coarse search on images box-averaged over STEP x STEP pixels, then refined pixel by pixel.
 const STEP: u32 = 8;
-/// A coarse spot up to STEP/2 off a widget scores worse than the exact spot, so the shortlist is
-/// looser; 1 means nothing there changed at all.
-const CANDIDATE: f64 = 0.95;
 
 /// Error of the reference placed with its top-left corner at (x, y): |after - expected| summed,
 /// divided by |before - expected| summed.
@@ -25,6 +26,9 @@ pub fn error(before: &RgbaImage, after: &RgbaImage, reference: &RgbaImage, x: u3
     let (mut diff, mut base) = (0.0, 0.0);
     for (rx, ry, r) in reference.enumerate_pixels() {
         let (b, s) = (before.get_pixel(x + rx, y + ry), after.get_pixel(x + rx, y + ry));
+        if b[3] == 0 {
+            continue; // background changed by itself here
+        }
         let a = r[3] as f64 / 255.0;
         for c in 0..3 {
             let e = r[c] as f64 * a + b[c] as f64 * (1.0 - a);
@@ -67,6 +71,9 @@ fn coarse_error(before: &Small, after: &Small, reference: &Small, x: u32, y: u32
             let r = reference.px[(ry * reference.w + rx) as usize];
             let i = ((y + ry) * before.w + x + rx) as usize;
             let (b, s) = (before.px[i], after.px[i]);
+            if b[3] < 0.9 {
+                continue; // mostly changing background
+            }
             for c in 0..3 {
                 let e = r[c] + b[c] * (1.0 - r[3]);
                 diff += (s[c] - e).abs() as f64;
@@ -77,9 +84,23 @@ fn coarse_error(before: &Small, after: &Small, reference: &Small, x: u32, y: u32
     if base == 0.0 { 1.0 } else { diff / base }
 }
 
+/// Copies of before and after with alpha 0 where the background changed between before and post.
+fn mask(before: &RgbaImage, after: &RgbaImage, post: &RgbaImage) -> (RgbaImage, RgbaImage) {
+    let (mut b, mut a) = (before.clone(), after.clone());
+    for (x, y, p) in post.enumerate_pixels() {
+        let q = before.get_pixel(x, y);
+        if (0..3).map(|c| p[c].abs_diff(q[c]) as u32).sum::<u32>() > NOISE {
+            b.get_pixel_mut(x, y)[3] = 0;
+            a.get_pixel_mut(x, y)[3] = 0;
+        }
+    }
+    (b, a)
+}
+
 /// Searches the whole screenshot for `expected.len()` widgets and pairs each hit with the nearest
 /// expected position. A widget that is missing gets error 1.
-pub fn find(before: &RgbaImage, after: &RgbaImage, reference: &RgbaImage, expected: &[(u32, u32)]) -> Vec<Match> {
+pub fn find(before: &RgbaImage, after: &RgbaImage, post: &RgbaImage, reference: &RgbaImage, expected: &[(u32, u32)]) -> Vec<Match> {
+    let (before, after) = &mask(before, after, post);
     let (rw, rh) = reference.dimensions();
     let (maxx, maxy) = (after.width().saturating_sub(rw), after.height().saturating_sub(rh));
     let (b, a, r) = (shrink(before), shrink(after), shrink(reference));
@@ -93,7 +114,7 @@ pub fn find(before: &RgbaImage, after: &RgbaImage, reference: &RgbaImage, expect
     // best non-overlapping hits, each refined to the exact pixel
     let mut hits: Vec<(f64, u32, u32)> = vec![];
     for &(e, x, y) in &coarse {
-        if hits.len() == expected.len() || e >= CANDIDATE {
+        if hits.len() == expected.len() || e >= FOUND {
             break;
         }
         if hits.iter().any(|h| h.1.abs_diff(x) < rw && h.2.abs_diff(y) < rh) {
@@ -108,9 +129,7 @@ pub fn find(before: &RgbaImage, after: &RgbaImage, reference: &RgbaImage, expect
                 }
             }
         }
-        if best.0 < FOUND {
-            hits.push(best);
-        }
+        hits.push(best);
     }
     let mut matches: Vec<Match> = expected.iter().map(|&p| Match { expected: p, found: None, error: 1.0 }).collect();
     let dist = |m: &Match, h: &(f64, u32, u32)| m.expected.0.abs_diff(h.1).pow(2) + m.expected.1.abs_diff(h.2).pow(2);

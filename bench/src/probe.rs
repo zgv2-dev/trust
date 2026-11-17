@@ -33,7 +33,8 @@ fn launch(sys: &mut System, mut cmd: Command) -> (Option<f64>, Running) {
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let preexisting = sys.processes().keys().copied().collect();
     let start = Instant::now();
-    let mut child = cmd.stdout(Stdio::piped()).spawn().unwrap_or_else(|e| panic!("start {:?}: {e}", cmd.get_program()));
+    // no stderr: app logs would scroll the terminal, which may sit behind the widgets
+    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap_or_else(|e| panic!("start {:?}: {e}", cmd.get_program()));
     let (tx, rx) = mpsc::channel();
     let stdout = child.stdout.take().unwrap();
     std::thread::spawn(move || {
@@ -77,6 +78,7 @@ pub fn probe(sys: &mut System, make: &dyn Fn() -> Command, look: Option<Look>, s
     std::thread::sleep(Duration::from_secs(3)); // let windows settle: overlays resize, WMs place
     let after = before.as_ref().and_then(|_| capture::screenshot(shot));
     stop(sys, running);
+    let post = after.as_ref().and_then(|_| capture::screenshot(shot)); // background again, app gone
     let mut warm: Vec<f64> = (0..WARM_RUNS)
         .filter_map(|_| {
             let (ms, r) = launch(sys, make());
@@ -86,14 +88,14 @@ pub fn probe(sys: &mut System, make: &dyn Fn() -> Command, look: Option<Look>, s
         .collect();
     let ms = |v: Option<f64>| v.map_or("no first frame".into(), |v| format!("{v:.0}"));
     let times = format!("{} | {}", ms(cold), ms(median(&mut warm)));
-    let (Some(look), Some(before), Some(after)) = (look, before, after) else {
+    let (Some(look), Some(before), Some(after), Some(post)) = (look, before, after, post) else {
         return format!("{times} | - | - | -");
     };
     let px = |v: f64| (v * look.scale).round() as u32;
     let expected: Vec<(u32, u32)> = (0..look.widgets)
         .map(|i| (px(40.0 + 260.0 * (i % 4) as f64 - MARGIN), px(40.0 + 140.0 * (i / 4) as f64 - MARGIN)))
         .collect();
-    let matches = look::find(&before, &after, look.reference, &expected);
+    let matches = look::find(&before, &after, &post, look.reference, &expected);
     let _ = look::side_by_side(&before, &after, look.reference, &matches).save(look.image);
     let found: Vec<f64> = matches
         .iter()

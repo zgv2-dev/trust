@@ -73,8 +73,11 @@ This builds every variant, then runs them one at a time. For each one it takes a
 launches the app with the animation frozen (cold start), waits 3 s, takes another screenshot and
 closes it, launches it 3 more times (warm starts), then measures 5 s warmup + 20 s with the
 animation running. About 45 s per variant, 10–15 minutes in total. Windows open and close on
-their own. Don't touch the machine or move windows while it runs, keep other apps idle, and keep
-the top-left of the screen (where the widgets go) free of windows that change.
+their own. Don't touch the machine or move windows while it runs, and keep other apps idle.
+Keep the strip where the widgets go (40–1080 × 40–300 logical px from the top-left) clear: put the
+terminal below it. A third screenshot after the app closes marks background pixels that changed by
+themselves (a scrolling terminal, a title bar dimming when an app takes focus); the look error
+skips those, but it can only score what it can see.
 
 Each run writes `results/<os>-<arch>-<UTC time>.md` and a folder of the same name with one
 picture per variant: the expected look on top, the actual screen below. Runs accumulate.

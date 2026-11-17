@@ -26,7 +26,12 @@ fn finds_moved_and_missing_widgets() {
             }
         }
     }
-    let m = find(&before, &after, &reference, &expected);
+    // the background changed by itself in one strip (say, a terminal scrolled): ignored
+    let mut post = before.clone();
+    for x in 0..400 {
+        post.put_pixel(x, 15, Rgba([0, 0, 0, 255])); // crosses widget 0
+    }
+    let m = find(&before, &after, &post, &reference, &expected);
     assert_eq!(m[0].found, Some((10, 10)));
     assert_eq!(m[1].found, Some((130, 40)));
     assert_eq!(m[2].found, Some((200, 10)));
