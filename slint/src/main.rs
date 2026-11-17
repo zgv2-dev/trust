@@ -18,8 +18,9 @@ fn set_glows(w: &slint::Window, glows: Glows) {
     glows.set_outer(image(&halo::outer(scale)));
     glows.set_inner(image(&halo::inner(scale)));
     glows.set_title(image(&halo::title(scale)));
-    let digits: Vec<slint::Image> = halo::digits(scale).iter().map(image).collect();
-    glows.set_digits(slint::ModelRc::new(slint::VecModel::from(digits)));
+    let d: Vec<slint::Image> = halo::digits(scale).iter().map(image).collect();
+    let set = [Glows::set_d0, Glows::set_d1, Glows::set_d2, Glows::set_d3, Glows::set_d4, Glows::set_d5, Glows::set_d6, Glows::set_d7, Glows::set_d8, Glows::set_d9];
+    set.iter().zip(d).for_each(|(set, img)| set(&glows, img));
 }
 
 static FIRST: std::sync::Once = std::sync::Once::new();

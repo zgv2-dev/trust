@@ -27,7 +27,7 @@ QtObject {
                 const g = getContext("2d");
                 g.reset();
                 g.translate(root.margin, root.margin);
-                Look.drawStatic(g);
+                Look.drawStatic(g, Screen.devicePixelRatio);
             }
         }
         Canvas {
@@ -37,7 +37,7 @@ QtObject {
                 const g = getContext("2d");
                 g.reset();
                 g.translate(root.margin, root.margin);
-                Look.drawDynamic(g, panel.t);
+                Look.drawDynamic(g, panel.t, Screen.devicePixelRatio);
             }
         }
     }

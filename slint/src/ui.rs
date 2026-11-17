@@ -8,7 +8,14 @@ slint::slint! {
         in property <image> outer;
         in property <image> inner;
         in property <image> title;
-        in property <[image]> digits;
+        // one property per digit: an image array ([image]) set from Rust doesn't render in Slint 1.18
+        in property <image> d0; in property <image> d1; in property <image> d2; in property <image> d3;
+        in property <image> d4; in property <image> d5; in property <image> d6; in property <image> d7;
+        in property <image> d8; in property <image> d9;
+        public pure function digit(d: int) -> image {
+            d == 0 ? d0 : d == 1 ? d1 : d == 2 ? d2 : d == 3 ? d3 : d == 4 ? d4 :
+            d == 5 ? d5 : d == 6 ? d6 : d == 7 ? d7 : d == 8 ? d8 : d9
+        }
     }
 
     // An image drawn 1:1 in physical pixels, its top-left at (x, y) in logical px.
@@ -44,22 +51,25 @@ slint::slint! {
             for k in 10: Rectangle { x: -0.5px; y: k * 12px - 0.5px; width: 240px; height: 1px; background: rgba(80, 255, 120, 0.06); }
             for k in 20: Rectangle { x: k * 12px - 0.5px; y: -0.5px; width: 1px; height: 110px; background: rgba(80, 255, 120, 0.06); }
         }
-        Sprite { source: Glows.inner; }
+        Sprite { source: Glows.inner; x: 0; y: 0; }
         Rectangle { border-width: 1px; border-radius: 4.5px; border-color: rgba(80, 255, 120, 0.35); }
-        Sprite { source: Glows.title; }
+        Sprite { source: Glows.title; x: 0; y: 0; } // explicit: Slint centers unpositioned elements
         Text { x: 10px; y: 20px - 13.44px; text: "MOTORS"; color: #50ff78; font-family: "Space Mono"; font-size: 12px; }
         for i in 4: Rectangle {
             x: 32px + i * 52px - 20.5px; y: 50px - 20.5px; width: 41px; height: 41px;
             border-width: 1px; border-radius: 20.5px; border-color: rgba(80, 255, 120, 0.5);
         }
         for i in 4: Rectangle {
+            x: 0; y: 0; width: 240px; height: 110px; // explicit: unsized children of a non-layout get centered
             property <float> f: 0.5 + 0.45 * sin((t * 1.3 + i) * 1rad); // fake PWM
             property <int> n: round(1000 + f * 1000);
             property <length> left: 32px + i * 52px - 2 * 7.344px; // 4 digits centered on the pie
             Wedge { x: 32px + i * 52px - 22px; y: 50px - 22px; amount: f; }
-            for d[k] in [floor(n / 1000), mod(floor(n / 100), 10), mod(floor(n / 10), 10), mod(n, 10)]: Sprite {
-                source: Glows.digits[d]; x: left + k * 7.344px - 14px; y: 94px - 28px;
-            }
+            // each digit's glow, pen at (left + k advances, baseline 94); halo sprites start at (-14, -28)
+            Sprite { source: Glows.digit(floor(n / 1000)); x: left - 14px; y: 66px; }
+            Sprite { source: Glows.digit(mod(floor(n / 100), 10)); x: left + 7.344px - 14px; y: 66px; }
+            Sprite { source: Glows.digit(mod(floor(n / 10), 10)); x: left + 2 * 7.344px - 14px; y: 66px; }
+            Sprite { source: Glows.digit(mod(n, 10)); x: left + 3 * 7.344px - 14px; y: 66px; }
             Text { x: left; y: 94px - 13.44px; text: n; color: #50ff78; font-family: "Space Mono"; font-size: 12px; }
         }
     }
