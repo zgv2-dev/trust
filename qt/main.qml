@@ -50,8 +50,11 @@ QtObject {
             property int frames: 0
             visible: true
             color: "transparent"
-            // no Qt.Tool on macOS: tool windows there are panels that hide while the app isn't active
-            flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | (Qt.platform.os === "osx" ? 0 : Qt.Tool)
+            // no Qt.Tool on macOS: tool windows there are panels that hide while the app isn't active.
+            // No drop shadow: macOS shades the desktop under a transparent window's visible pixels,
+            // which darkened everything behind the translucent panel
+            flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint
+                | (Qt.platform.os === "osx" ? 0 : Qt.Tool)
             x: root.overlay ? 0 : 40 + 260 * (index % 4) - root.margin
             y: root.overlay ? 0 : 60 + 140 * Math.floor(index / 4) - root.margin
             width: root.overlay ? Screen.width : Look.W + 2 * root.margin

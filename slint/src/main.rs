@@ -8,6 +8,18 @@ mod ui;
 
 use ui::{Glows, Overlay, Widget};
 
+/// No macOS window shadow: it shades the desktop under the translucent panel (egui and Tauri turn it
+/// off too). Needs the native window, so call it once the event loop runs.
+fn no_shadow(w: &slint::Window) {
+    #[cfg(target_os = "macos")]
+    w.with_winit_window(|w| {
+        use slint::winit_030::winit::platform::macos::WindowExtMacOS;
+        w.set_has_shadow(false)
+    });
+    #[cfg(not(target_os = "macos"))]
+    let _ = w;
+}
+
 /// halo's glow images at the window's scale, handed to the panel markup.
 fn set_glows(w: &slint::Window, glows: Glows) {
     let image = |s: &halo::Sprite| {
@@ -55,6 +67,7 @@ fn main() -> Result<(), slint::PlatformError> {
         Timer::single_shot(Duration::from_millis(100), move || {
             let Some(o) = weak.upgrade() else { return };
             set_glows(o.window(), o.global::<Glows>());
+            no_shadow(o.window());
             // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
             let size = o.window().with_winit_window(|w| {
                 w.set_cursor_hittest(false).ok();
@@ -89,6 +102,7 @@ fn main() -> Result<(), slint::PlatformError> {
         Timer::single_shot(Duration::from_millis(100), move || {
             if let Some(w) = weak.upgrade() {
                 set_glows(w.window(), w.global::<Glows>());
+                no_shadow(w.window());
                 w.window().set_position(at);
             }
         });
