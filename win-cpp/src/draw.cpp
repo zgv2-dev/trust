@@ -47,6 +47,9 @@ void drawFrame(const Gpu& g, const Brushes& b, const Surface& s, const std::vect
     dc->BeginDraw();
     dc->Clear(clear);
     for (auto o : origins) {
+        // the border is in the glowed layer too: that gives the panel its tiny outer glow
+        D2D1_ROUNDED_RECT border = {D2D1::RectF(o.x + 0.5f, o.y + 0.5f, o.x + W - 0.5f, o.y + H - 0.5f), 4, 4};
+        dc->DrawRoundedRectangle(border, b.border.Get(), 1.0f);
         D2D1_RECT_F titleRect = D2D1::RectF(o.x + 10, o.y + 6, o.x + W, o.y + 24);
         dc->DrawText(L"MOTORS", 6, g.title.Get(), &titleRect, b.text.Get());
         for (int i = 0; i < 4; i++) {
@@ -72,7 +75,6 @@ void drawFrame(const Gpu& g, const Brushes& b, const Surface& s, const std::vect
             dc->DrawLine(D2D1::Point2F(o.x, o.y + gy), D2D1::Point2F(o.x + W, o.y + gy), b.grid.Get(), 1.0f);
         for (float gx = 0.5f; gx < W; gx += 12)
             dc->DrawLine(D2D1::Point2F(o.x + gx, o.y), D2D1::Point2F(o.x + gx, o.y + H), b.grid.Get(), 1.0f);
-        dc->DrawRoundedRectangle(rounded, b.border.Get(), 1.0f);
     }
     ComPtr<ID2D1Image> glow;
     s.glow->GetOutput(&glow);

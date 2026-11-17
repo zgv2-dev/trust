@@ -55,6 +55,9 @@ pub unsafe fn frame(g: &Gpu, b: &Brushes, s: &Surface, origins: &[(f32, f32)], t
     dc.BeginDraw();
     dc.Clear(Some(&clear));
     for &(x, y) in origins {
+        // the border is in the glowed layer too: that gives the panel its tiny outer glow
+        let rect = D2D_RECT_F { left: x + 0.5, top: y + 0.5, right: x + W - 0.5, bottom: y + H - 0.5 };
+        dc.DrawRoundedRectangle(&D2D1_ROUNDED_RECT { rect, radiusX: 4.0, radiusY: 4.0 }, &b.border, 1.0, None);
         let title = "MOTORS".encode_utf16().collect::<Vec<_>>();
         let rect = D2D_RECT_F { left: x + 10.0, top: y + 6.0, right: x + W, bottom: y + 24.0 };
         dc.DrawText(&title, &g.title, &rect, &b.text, D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
@@ -88,7 +91,6 @@ pub unsafe fn frame(g: &Gpu, b: &Brushes, s: &Surface, origins: &[(f32, f32)], t
             dc.DrawLine(pt(x + gx, y), pt(x + gx, y + H), &b.grid, 1.0, None);
             gx += 12.0;
         }
-        dc.DrawRoundedRectangle(&rounded, &b.border, 1.0, None);
     }
     let image: ID2D1Image = s.glow.GetOutput()?;
     dc.DrawImage(&image, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);

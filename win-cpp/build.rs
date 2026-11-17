@@ -10,6 +10,8 @@ fn main() {
         .files(["src/main.cpp", "src/gfx.cpp", "src/draw.cpp"])
         .define("UNICODE", None)
         .define("NOMINMAX", None)
+        // wide string literal of fonts/SpaceMono-Regular.ttf; forward slashes need no escaping
+        .define("FONT_PATH", format!("L\"{}/../fonts/SpaceMono-Regular.ttf\"", env!("CARGO_MANIFEST_DIR").replace('\\', "/")).as_str())
         .compile("wincpp");
     for lib in ["d3d11", "dxgi", "d2d1", "dcomp", "dwrite", "dwmapi", "dxguid", "user32", "gdi32"] {
         println!("cargo:rustc-link-lib={lib}");

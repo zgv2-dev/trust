@@ -40,7 +40,17 @@ mod app {
         cairo::Region::create_rectangles(&(0..n).map(|i| rect(origin(i))).collect::<Vec<_>>())
     }
 
+    #[link(name = "fontconfig")]
+    extern "C" {
+        fn FcConfigAppFontAddFile(config: *mut std::ffi::c_void, file: *const std::ffi::c_char) -> i32;
+    }
+
     pub fn activate(app: &gtk::Application, n: usize, overlay: bool) {
+        // make Space Mono visible to Cairo's font lookup (fontconfig) without installing it
+        let font = concat!(env!("CARGO_MANIFEST_DIR"), "/../fonts/SpaceMono-Regular.ttf\0");
+        if unsafe { FcConfigAppFontAddFile(std::ptr::null_mut(), font.as_ptr().cast()) } == 0 {
+            eprintln!("couldn't load {font}");
+        }
         let css = gtk::CssProvider::new();
         css.load_from_data("window { background: transparent; }");
         let display = gdk::Display::default().expect("no display");

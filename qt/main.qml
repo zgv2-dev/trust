@@ -9,6 +9,7 @@ QtObject {
     required property bool overlay
     required property real freeze
     readonly property color accent: "#50ff78"
+    property FontLoader mono: FontLoader { source: "../fonts/SpaceMono-Regular.ttf" }
     signal fps(int n)
 
     component Panel: Item {
@@ -20,13 +21,19 @@ QtObject {
         Rectangle {
             anchors.fill: parent; radius: 4
             color: Qt.rgba(3 / 255, 10 / 255, 3 / 255, 0.25)
+        }
+        Rectangle { // the border, with a tiny outer glow (blurred shadow of the border itself)
+            anchors.fill: parent; radius: 4
+            color: "transparent"
             border.color: Qt.rgba(0.31, 1, 0.47, 0.35)
+            layer.enabled: true
+            layer.effect: MultiEffect { shadowEnabled: true; shadowColor: Qt.rgba(0.31, 1, 0.47, 0.45); shadowBlur: 0.3; shadowHorizontalOffset: 0; shadowVerticalOffset: 0; autoPaddingEnabled: true }
         }
         Item {
             anchors.fill: parent; anchors.margins: 10
             layer.enabled: true
             layer.effect: MultiEffect { shadowEnabled: true; shadowColor: root.accent; shadowBlur: 0.4; shadowHorizontalOffset: 0; shadowVerticalOffset: 0 }
-            Text { text: "MOTORS"; color: root.accent; font.family: "Courier New" }
+            Text { text: "MOTORS"; color: root.accent; font.family: root.mono.font.family }
             Row {
                 y: 18; spacing: 8
                 Repeater {
@@ -48,7 +55,7 @@ QtObject {
                         }
                         Text {
                             width: 44; horizontalAlignment: Text.AlignHCenter
-                            text: Math.round(1000 + f * 1000); color: root.accent; font.family: "Courier New"
+                            text: Math.round(1000 + f * 1000); color: root.accent; font.family: root.mono.font.family
                         }
                     }
                 }

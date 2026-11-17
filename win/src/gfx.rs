@@ -1,6 +1,6 @@
 // GPU plumbing: one D3D11/D2D/DirectComposition device for the process, one flip-model swap chain
 // per window. DirectComposition is what lets a swap chain keep per-pixel alpha on the desktop.
-use windows::core::{w, Interface, Result};
+use windows::core::{w, Interface, Result, HSTRING};
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
@@ -59,11 +59,16 @@ impl Gpu {
         let dc = factory.CreateDevice(&dxgi)?.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)?;
         dc.SetDpi(dpi, dpi);
         let dcomp: IDCompositionDevice = DCompositionCreateDevice(&dxgi)?;
-        let dwrite: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
+        // Space Mono straight from fonts/, through a private font collection (no install needed)
+        let dwrite: IDWriteFactory5 = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
+        let path = HSTRING::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../fonts/SpaceMono-Regular.ttf"));
+        let builder = dwrite.CreateFontSetBuilder()?;
+        builder.AddFontFile(&dwrite.CreateFontFileReference(&path, None)?)?;
+        let fonts = dwrite.CreateFontCollectionFromFontSet(&builder.CreateFontSet()?)?;
         let format = |size| {
             dwrite.CreateTextFormat(
-                w!("Consolas"),
-                None,
+                w!("Space Mono"),
+                &fonts,
                 DWRITE_FONT_WEIGHT_NORMAL,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,

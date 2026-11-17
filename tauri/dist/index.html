@@ -6,13 +6,13 @@
      reference look (widget.js) instead. -->
 <style>
   :root { --accent: #50ff78; --bg: #030a03; }
-  html, body { margin: 0; background: transparent; overflow: hidden; font: 12px monospace; color: var(--accent); }
+  html, body { margin: 0; background: transparent; overflow: hidden; font: 12px "Space Mono"; color: var(--accent); }
   .panel { position: fixed; inset: 0; box-sizing: border-box; padding: 8px 10px; border-radius: 4px;
     border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     background: linear-gradient(color-mix(in srgb, var(--accent) 6%, transparent) 1px, transparent 1px) 0 0 / 100% 12px,
       linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent) 1px, transparent 1px) 0 0 / 12px 100%,
       color-mix(in srgb, var(--bg) 25%, transparent);
-    box-shadow: inset 0 0 24px color-mix(in srgb, var(--accent) 8%, transparent); }
+    box-shadow: 0 0 6px rgba(80,255,120,0.16), inset 0 0 24px color-mix(in srgb, var(--accent) 8%, transparent); }
   .title { text-shadow: 0 0 6px var(--accent); margin-bottom: 4px; }
   .row { display: flex; gap: 8px; }
   .pie { width: 40px; height: 40px; margin: 2px; border-radius: 50%;
@@ -22,7 +22,9 @@
 </style>
 </head>
 <body>
+<script src="space-mono.js"></script>
 <script>
+  document.fonts.add(new FontFace("Space Mono", `url(${window.SPACE_MONO})`));
   // BENCH_N set: overlay mode, n panels placed inside one window; otherwise one panel filling this window
   const n = window.BENCH_N || 0;
   const motors = [];

@@ -84,7 +84,7 @@ fn panel(ui: &mut egui::Ui, t: f32) {
         .stroke(Stroke::new(1.0, ACCENT.gamma_multiply(0.35)))
         .corner_radius(4.0)
         .inner_margin(10.0);
-    panel.show(ui, |ui| {
+    let shown = panel.show(ui, |ui| {
         ui.set_min_size(Vec2::new(220.0, 90.0));
         ui.label(egui::RichText::new("MOTORS").monospace().color(ACCENT));
         ui.horizontal(|ui| {
@@ -99,6 +99,15 @@ fn panel(ui: &mut egui::Ui, t: f32) {
             }
         });
     });
+    glow(ui.painter(), shown.response.rect);
+}
+
+/// Tiny outer glow: faint strokes stepping out from the border (egui has no blur).
+fn glow(p: &egui::Painter, rect: egui::Rect) {
+    for (d, a) in [(1.0, 0.08), (2.0, 0.05), (3.0, 0.03), (4.0, 0.015)] {
+        let stroke = Stroke::new(1.0, ACCENT.gamma_multiply(a));
+        p.rect_stroke(rect.expand(d), 4.0 + d, stroke, egui::StrokeKind::Middle);
+    }
 }
 
 fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
@@ -137,5 +146,17 @@ fn main() -> eframe::Result {
     let now = Instant::now();
     let freeze = std::env::var("BENCH_FREEZE").ok().and_then(|t| t.parse().ok());
     let app = Bench { windows, start: now, frames: 0, last: now, overlay, sized: false, freeze };
-    eframe::run_native("egui 0", opts, Box::new(|_| Ok(Box::new(app))))
+    eframe::run_native(
+        "egui 0",
+        opts,
+        Box::new(|cc| {
+            // Space Mono for every monospace label, as in the reference
+            let mut fonts = egui::FontDefinitions::default();
+            let data = egui::FontData::from_static(include_bytes!("../../fonts/SpaceMono-Regular.ttf"));
+            fonts.font_data.insert("space-mono".into(), std::sync::Arc::new(data));
+            fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "space-mono".into());
+            cc.egui_ctx.set_fonts(fonts);
+            Ok(Box::new(app))
+        }),
+    )
 }

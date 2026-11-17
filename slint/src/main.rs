@@ -5,6 +5,17 @@ use slint::{ComponentHandle, LogicalPosition, PhysicalPosition, RenderingState, 
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 slint::slint! {
+    import "../fonts/SpaceMono-Regular.ttf";
+
+    // Tiny outer glow: faint borders stepping out from the panel's (Slint has no blur on strokes).
+    component Glow inherits Rectangle {
+        in property <length> d;
+        in property <float> a;
+        x: -d; y: -d; width: 240px + 2 * d; height: 110px + 2 * d; // panel size
+        border-width: 1px; border-radius: 4px + d;
+        border-color: rgba(80, 255, 120, a);
+    }
+
     component Pie inherits Rectangle {
         in property <float> amount; // not `fill`: Path has its own fill brush
         width: 44px; height: 44px;
@@ -29,15 +40,19 @@ slint::slint! {
         property <float> t: freeze >= 0 ? freeze : animation-tick() / 1s;
         background: #030a033c;
         border-width: 1px; border-radius: 4px; border-color: #50ff7859;
+        Glow { d: 1px; a: 0.08; }
+        Glow { d: 2px; a: 0.05; }
+        Glow { d: 3px; a: 0.03; }
+        Glow { d: 4px; a: 0.015; }
         VerticalLayout {
             padding: 10px; spacing: 4px;
-            Text { text: "MOTORS"; color: #50ff78; font-family: "monospace"; }
+            Text { text: "MOTORS"; color: #50ff78; font-family: "Space Mono"; }
             HorizontalLayout {
                 spacing: 8px;
                 for m in 4: VerticalLayout {
                     property <float> f: 0.5 + 0.45 * sin((t * 1.3 + m) * 1rad); // fake PWM
                     Pie { amount: f; }
-                    Text { text: round(1000 + f * 1000); color: #50ff78; font-family: "monospace"; }
+                    Text { text: round(1000 + f * 1000); color: #50ff78; font-family: "Space Mono"; }
                 }
             }
         }

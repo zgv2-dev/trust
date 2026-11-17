@@ -38,8 +38,14 @@ pub fn panel(cr: &Context, x: f64, y: f64, t: f64) -> Result<(), Error> {
     rounded(cr, x + 0.5, y + 0.5, W - 1.0, H - 1.0, 4.0);
     accent(cr, 0.35);
     cr.stroke()?;
+    // tiny outer glow: faint strokes stepping out from the border (Cairo has no blur)
+    for (d, a) in [(1.0, 0.08), (2.0, 0.05), (3.0, 0.03), (4.0, 0.015)] {
+        rounded(cr, x + 0.5 - d, y + 0.5 - d, W - 1.0 + 2.0 * d, H - 1.0 + 2.0 * d, 4.0 + d);
+        accent(cr, a);
+        cr.stroke()?;
+    }
 
-    cr.select_font_face("monospace", FontSlant::Normal, FontWeight::Normal);
+    cr.select_font_face("Space Mono", FontSlant::Normal, FontWeight::Normal);
     cr.set_font_size(12.0);
     accent(cr, 1.0);
     cr.move_to(x + 10.0, y + 20.0);

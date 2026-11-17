@@ -81,16 +81,24 @@
   function next() { kind = (kind + 1 + Math.floor(Math.random() * (backgrounds.length - 1))) % backgrounds.length; paintBackground(); }
 
   // One widget at t=FREEZE with its glow margin on a transparent background, at this screen's scale.
-  function exportReference() {
+  async function exportReference() {
+    await Widget.ready;
     const c = document.createElement("canvas");
     c.width = Math.round((W + 2 * MARGIN) * dpr); c.height = Math.round((H + 2 * MARGIN) * dpr);
     const g = c.getContext("2d");
     g.scale(dpr, dpr);
     Widget.draw(g, MARGIN, MARGIN, FREEZE);
+    // fingerprinting protection (Safari, Firefox/Zen resistFingerprinting) hands back blank pixels
+    const px = g.getImageData(0, 0, c.width, c.height).data;
+    if (!px.some((v, i) => i % 4 === 3 && v > 0)) {
+      document.getElementById("info").textContent =
+        "This browser blocked reading the canvas (fingerprinting protection). Export with Chrome.";
+      return;
+    }
     c.toBlob((blob) => {
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: fileName });
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     }, "image/png");
   }
 
@@ -104,7 +112,9 @@
   addEventListener("resize", fit);
   kind = Math.floor(Math.random() * backgrounds.length);
   fit();
-  Widget.ready.then(() => requestAnimationFrame(tick));
+  // draw right away (fallback font until Space Mono loads), so a font problem can't hide the widgets
+  Widget.ready.catch((e) => { document.getElementById("info").textContent = "Space Mono failed to load: " + e; });
+  requestAnimationFrame(tick);
 </script>
 </body>
 </html>

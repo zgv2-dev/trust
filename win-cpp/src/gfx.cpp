@@ -14,9 +14,9 @@ static D2D1_BITMAP_PROPERTIES1 props(D2D1_BITMAP_OPTIONS options, float dpi) {
         options, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), dpi, dpi);
 }
 
-static ComPtr<IDWriteTextFormat> format(IDWriteFactory* dwrite, float size) {
+static ComPtr<IDWriteTextFormat> format(IDWriteFactory* dwrite, IDWriteFontCollection* fonts, float size) {
     ComPtr<IDWriteTextFormat> f;
-    HR(dwrite->CreateTextFormat(L"Consolas", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+    HR(dwrite->CreateTextFormat(L"Space Mono", fonts, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
                                 DWRITE_FONT_STRETCH_NORMAL, size, L"en-us", &f));
     return f;
 }
@@ -35,11 +35,21 @@ Gpu makeGpu(float dpi) {
     HR(device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &g.dc));
     g.dc->SetDpi(dpi, dpi);
     HR(DCompositionCreateDevice(g.dxgi.Get(), IID_PPV_ARGS(&g.dcomp)));
-    ComPtr<IDWriteFactory> dwrite;
-    HR(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+    // Space Mono straight from fonts/, through a private font collection (no install needed)
+    ComPtr<IDWriteFactory5> dwrite;
+    HR(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory5),
                            reinterpret_cast<IUnknown**>(dwrite.GetAddressOf())));
-    g.title = format(dwrite.Get(), 12.0f);
-    g.value = format(dwrite.Get(), 12.0f);
+    ComPtr<IDWriteFontFile> file;
+    HR(dwrite->CreateFontFileReference(FONT_PATH, nullptr, &file));
+    ComPtr<IDWriteFontSetBuilder1> builder;
+    HR(dwrite->CreateFontSetBuilder(&builder));
+    HR(builder->AddFontFile(file.Get()));
+    ComPtr<IDWriteFontSet> set;
+    HR(builder->CreateFontSet(&set));
+    ComPtr<IDWriteFontCollection1> fonts;
+    HR(dwrite->CreateFontCollectionFromFontSet(set.Get(), &fonts));
+    g.title = format(dwrite.Get(), fonts.Get(), 12.0f);
+    g.value = format(dwrite.Get(), fonts.Get(), 12.0f);
     HR(g.value->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER));
     return g;
 }

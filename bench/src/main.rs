@@ -49,8 +49,11 @@ fn reference(dir: &Path) -> Result<(image::RgbaImage, f64), String> {
         return Err(format!("{} {prefix}*x.png in reference/; export it from reference/index.html or pass --scale", found.len()));
     };
     let scale = file[prefix.len()..file.len() - 5].parse().map_err(|_| format!("bad scale in {file}"))?;
-    let img = image::open(dir.join(file)).map_err(|e| format!("{file}: {e}"))?;
-    Ok((img.to_rgba8(), scale))
+    let img = image::open(dir.join(file)).map_err(|e| format!("{file}: {e}"))?.to_rgba8();
+    if img.pixels().all(|p| p[3] == 0) {
+        return Err(format!("{file} is empty (the browser blocked canvas readback); export it again from Chrome"));
+    }
+    Ok((img, scale))
 }
 
 fn main() {
