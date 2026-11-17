@@ -8,22 +8,36 @@ use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 use sysinfo::{Pid, System};
 
-// (name, binary, BENCH_MODE, extra env): "windows" = one window per widget, "overlay" = one
-// click-through window over the primary monitor with every widget inside it.
-const FEMTOVG: &[(&str, &str)] = &[("SLINT_BACKEND", "winit-femtovg")];
-// Skia's OpenGL path: its Metal/D3D paths never fire Slint's rendering notifier, so fps can't be counted
-const SKIA: &[(&str, &str)] = &[("SLINT_BACKEND", "winit-skia-opengl")];
+// (name, program, BENCH_MODE, extra env): "windows" = one window per widget, "overlay" = one
+// click-through window over the primary monitor with every widget inside it. Program "qt" runs
+// qt/main.py with a Python that has PySide6.
+const CANVAS: &[(&str, &str)] = &[("BENCH_DRAW", "canvas")];
+const QT_GL: &[(&str, &str)] = &[("QSG_RHI_BACKEND", "opengl")];
 const VARIANTS: &[(&str, &str, &str, &[(&str, &str)])] = &[
     ("idle (no app)", "", "", &[]),
     ("tauri", "bench-tauri", "windows", &[]),
     ("tauri overlay", "bench-tauri", "overlay", &[]),
+    ("tauri-canvas", "bench-tauri", "windows", CANVAS),
+    ("tauri-canvas overlay", "bench-tauri", "overlay", CANVAS),
     ("egui-wgpu", "bench-egui", "windows", &[]),
     ("egui-wgpu overlay", "bench-egui", "overlay", &[]),
-    ("slint-femtovg", "bench-slint", "windows", FEMTOVG),
-    ("slint-femtovg overlay", "bench-slint", "overlay", FEMTOVG),
-    ("slint-skia-gl", "bench-slint", "windows", SKIA),
-    ("slint-skia-gl overlay", "bench-slint", "overlay", SKIA),
+    ("qt", "qt", "windows", &[]),
+    ("qt overlay", "qt", "overlay", &[]),
+    ("qt-opengl", "qt", "windows", QT_GL),
+    ("qt-opengl overlay", "qt", "overlay", QT_GL),
+    ("win-d2d", "bench-win", "windows", &[]),
+    ("win-d2d overlay", "bench-win", "overlay", &[]),
+    ("win-cpp", "bench-win-cpp", "windows", &[]),
+    ("win-cpp overlay", "bench-win-cpp", "overlay", &[]),
 ];
+
+/// First of $BENCH_PYTHON, python3, python that can import PySide6.
+fn python() -> Option<String> {
+    let candidates = env::var("BENCH_PYTHON").into_iter().chain(["python3".into(), "python".into()]);
+    candidates.into_iter().find(|py| {
+        Command::new(py).args(["-c", "import PySide6"]).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+    })
+}
 
 fn arg(name: &str, default: u64) -> u64 {
     let args: Vec<String> = env::args().collect();
@@ -36,7 +50,7 @@ fn main() {
     if !env::args().any(|a| a == "--no-build") {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = Command::new(cargo)
-            .args(["build", "--release", "-p", "bench-tauri", "-p", "bench-egui", "-p", "bench-slint"])
+            .args(["build", "--release", "-p", "bench-tauri", "-p", "bench-egui", "-p", "bench-win", "-p", "bench-win-cpp"])
             .status()
             .is_ok_and(|s| s.success());
         assert!(ok, "building the variants failed");
@@ -47,6 +61,8 @@ fn main() {
     sys.refresh_cpu_all();
     let cpu = sys.cpus().first().map(|c| c.brand().trim().to_string()).unwrap_or_default();
     let os = System::long_os_version().unwrap_or_default();
+    let python = python();
+    let qt_script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../qt/main.py");
     let mut out = format!(
         "# Widget bench: {os} ({}), {cpu}, {} logical CPUs\n\n{windows} widgets, {warmup}s warmup, {secs}s measured. \
          CPU % is of one core (100 = one full core).\n\n\
@@ -60,7 +76,20 @@ fn main() {
             continue;
         }
         eprintln!("== {name}");
-        let row = run(&mut sys, &dir, bin, mode, envs, windows, warmup, secs);
+        let cmd = match (*bin, &python) {
+            ("", _) => None,
+            ("qt", Some(py)) => Some(Command::new(py)).map(|mut c| { c.arg(&qt_script); c }),
+            ("bench-win" | "bench-win-cpp", _) if !cfg!(windows) => {
+                out += &format!("| {name} | skipped: Windows only | | | | | |\n");
+                continue;
+            }
+            ("qt", None) => {
+                out += &format!("| {name} | skipped: no Python with PySide6 (pip install PySide6) | | | | | |\n");
+                continue;
+            }
+            _ => Some(Command::new(dir.join(format!("{bin}{}", env::consts::EXE_SUFFIX)))),
+        };
+        let row = run(&mut sys, cmd, mode, envs, windows, warmup, secs);
         out += &format!("| {name} | {row} |\n");
         eprintln!("   {row}");
     }
@@ -73,19 +102,18 @@ fn main() {
     eprintln!("\nsaved {file}");
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run(sys: &mut System, dir: &std::path::Path, bin: &str, mode: &str, envs: &[(&str, &str)], windows: u64, warmup: u64, secs: u64) -> String {
+fn run(sys: &mut System, cmd: Option<Command>, mode: &str, envs: &[(&str, &str)], windows: u64, warmup: u64, secs: u64) -> String {
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let preexisting = sys.processes().keys().copied().collect();
     let fps = Arc::new(Mutex::new(Vec::<(Instant, f64)>::new()));
-    let mut child = (!bin.is_empty()).then(|| {
-        let mut c = Command::new(dir.join(format!("{bin}{}", env::consts::EXE_SUFFIX)))
+    let mut child = cmd.map(|mut cmd| {
+        let mut c = cmd
             .envs(envs.iter().copied())
             .env("BENCH_WINDOWS", windows.to_string())
             .env("BENCH_MODE", mode)
             .stdout(Stdio::piped())
             .spawn()
-            .unwrap_or_else(|e| panic!("start {bin}: {e}"));
+            .unwrap_or_else(|e| panic!("start {:?}: {e}", cmd.get_program()));
         let (stdout, fps) = (c.stdout.take().unwrap(), fps.clone());
         thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {

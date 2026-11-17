@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["bench", "egui", "slint", "tauri"]
+members = ["bench", "clip", "egui", "tauri", "win", "win-cpp"]
 
 [profile.release]
 debug = false

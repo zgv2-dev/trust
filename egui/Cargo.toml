@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+
+[target."cfg(windows)".dependencies]
+clip = { version = "0.1.0", path = "../clip" }
+raw-window-handle = "0.6"

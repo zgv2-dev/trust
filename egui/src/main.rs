@@ -34,7 +34,8 @@ impl eframe::App for Bench {
         [0.0; 4] // fully transparent window background
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+    #[allow(unused_variables)] // `frame` is only used on Windows
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let t = self.start.elapsed().as_secs_f32();
         let ctx = ui.ctx().clone();
         if self.overlay {
@@ -43,6 +44,14 @@ impl eframe::App for Bench {
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(Pos2::ZERO));
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
                 self.sized = true;
+                #[cfg(windows)]
+                {
+                    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                    if let Ok(RawWindowHandle::Win32(h)) = frame.window_handle().map(|h| h.as_raw()) {
+                        let scale = ctx.pixels_per_point() as f64;
+                        clip::to_rects(h.hwnd.get() as _, &clip::panels(self.windows, scale));
+                    }
+                }
             }
             for i in 0..self.windows {
                 egui::Area::new(egui::Id::NULL.with(("widget", i))).fixed_pos(pos(i)).show(&ctx, |ui| panel(ui, t));
@@ -101,15 +110,12 @@ fn pie(p: &egui::Painter, c: Pos2, r: f32, fill: f32) {
 
 fn main() -> eframe::Result {
     let windows = std::env::var("BENCH_WINDOWS").ok().and_then(|n| n.parse().ok()).unwrap_or(4);
-    // wgpu's default DX12 swapchain (DxgiFromHwnd) ignores alpha; the DirectComposition one keeps it
-    if cfg!(windows) && std::env::var_os("WGPU_DX12_PRESENTATION_SYSTEM").is_none() {
-        std::env::set_var("WGPU_DX12_PRESENTATION_SYSTEM", "Visual");
-    }
     let overlay = std::env::var("BENCH_MODE").is_ok_and(|m| m == "overlay");
     let mut viewport = viewport(0);
     if overlay {
-        // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
-        viewport = viewport.with_position([0.0, 0.0]).with_mouse_passthrough(true);
+        // shortcut: primary monitor only. On Windows the window is clipped to the panels on the first
+        // frame; elsewhere every click passes through, widgets included.
+        viewport = viewport.with_position([0.0, 0.0]).with_mouse_passthrough(!cfg!(windows));
     }
     let opts = eframe::NativeOptions { viewport, ..Default::default() };
     let now = Instant::now();
