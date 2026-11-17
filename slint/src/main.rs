@@ -70,6 +70,11 @@ slint::slint! {
     export component Overlay inherits Window {
         in property <int> count;
         in property <float> freeze: -1;
+        // explicit size: without it the window is pinned to its content's preferred size and
+        // macOS ignores any later resize (the overlay stayed small and centered, clipping panels)
+        in property <length> w: 240px;
+        in property <length> h: 110px;
+        width: w; height: h;
         no-frame: true;
         always-on-top: true;
         background: transparent;
@@ -106,25 +111,21 @@ fn main() -> Result<(), slint::PlatformError> {
         o.set_count(n as i32);
         o.set_freeze(freeze);
         let _timer = count_frames(o.window());
+        o.window().set_position(PhysicalPosition::new(0, 0)); // before show: applied at creation
         o.show()?;
         // shortcut: whole-window click-through and primary monitor only; real use needs per-widget hit regions
         let size = o.window().with_winit_window(|w| {
             w.set_cursor_hittest(false).ok();
-            w.current_monitor().map(|m| m.size())
+            w.current_monitor().map(|m| m.size().to_logical::<f32>(m.scale_factor()))
         });
         if let Some(Some(size)) = size {
-            // grow first, then move: macOS centers the small first window and can drop a move made
-            // before the resize; repeat once the window is up in case the first attempt is lost
-            let place = move |w: &slint::Window| {
-                w.set_size(slint::PhysicalSize::new(size.width, size.height));
-                w.set_position(PhysicalPosition::new(0, 0));
-                w.with_winit_window(|w| w.set_outer_position(slint::winit_030::winit::dpi::PhysicalPosition::new(0, 0)));
-            };
-            place(o.window());
+            o.set_w(size.width);
+            o.set_h(size.height);
+            // growing can shift the window on macOS (it keeps the bottom-left corner): move it back
             let weak = o.as_weak();
             Timer::single_shot(Duration::from_millis(300), move || {
                 if let Some(o) = weak.upgrade() {
-                    place(o.window());
+                    o.window().set_position(PhysicalPosition::new(0, 0));
                 }
             });
         }
