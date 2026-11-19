@@ -15,6 +15,8 @@ pub struct Sample {
     pub comp_cpu: f32,
 }
 
+/// Processes only: on Linux sysinfo also lists every thread, each reporting its whole process's
+/// memory and its own share of the CPU, which multiplied RSS (45 GB for tauri) and double-counted CPU.
 pub fn app_pids(sys: &System, root: Option<Pid>, preexisting: &HashSet<Pid>) -> HashSet<Pid> {
     let mut app = HashSet::new();
     let Some(root) = root else { return app };
@@ -22,7 +24,7 @@ pub fn app_pids(sys: &System, root: Option<Pid>, preexisting: &HashSet<Pid>) -> 
     loop {
         let before = app.len();
         for (pid, p) in sys.processes() {
-            if p.parent().is_some_and(|pp| app.contains(&pp)) {
+            if p.thread_kind().is_none() && p.parent().is_some_and(|pp| app.contains(&pp)) {
                 app.insert(*pid);
             }
         }
@@ -44,6 +46,9 @@ pub fn sample(sys: &mut System, root: Option<Pid>, preexisting: &HashSet<Pid>) -
     let app = app_pids(sys, root, preexisting);
     let mut s = Sample { app_cpu: 0.0, app_rss: 0, procs: app.len(), comp_cpu: 0.0 };
     for (pid, p) in sys.processes() {
+        if p.thread_kind().is_some() {
+            continue; // a thread of a process already counted (Linux)
+        }
         if app.contains(pid) {
             s.app_cpu += p.cpu_usage();
             s.app_rss += p.memory();
@@ -72,4 +77,13 @@ pub fn windowserver_cpu(sys: &System) -> Option<f32> {
         .output()
         .ok()?;
     String::from_utf8_lossy(&out.stdout).lines().last()?.trim().parse().ok()
+}
+
+#[test]
+fn threads_are_not_processes() {
+    let _thread = std::thread::spawn(|| std::thread::sleep(std::time::Duration::from_secs(2)));
+    let mut sys = System::new().expect("process list");
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+    let me = sysinfo::get_current_pid().unwrap();
+    assert_eq!(app_pids(&sys, Some(me), &HashSet::new()).len(), 1, "only this process, not its threads");
 }

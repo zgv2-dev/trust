@@ -25,7 +25,8 @@ fn main() {
             let freeze = &freeze;
             if std::env::var("BENCH_MODE").is_ok_and(|m| m == "overlay") {
                 // shortcut: primary monitor only; real use needs one overlay per monitor
-                let m = app.primary_monitor()?.expect("a monitor");
+                // Wayland has no primary monitor (None there crashed the overlay on Fedora): take the first
+                let m = app.primary_monitor()?.or(app.available_monitors()?.into_iter().next()).expect("a monitor");
                 let size = m.size().to_logical::<f64>(m.scale_factor());
                 let w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App(page.into()))
                     .initialization_script(format!("window.BENCH_N = {n}; window.BENCH_FREEZE = {freeze};"))
