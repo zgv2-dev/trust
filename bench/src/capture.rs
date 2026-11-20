@@ -5,20 +5,30 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 // Windows: GDI copy of the composed desktop; DPI-aware so a scaled screen isn't captured downscaled,
-// CaptureBlt so layered windows are included (CopyPixelOperation isn't a flags enum: a plain cast of
-// the combined value is refused, Enum::ToObject isn't), 24-bit so there's no alpha channel, and any
-// error stops the script instead of saving the untouched blank bitmap.
+// SRCCOPY|CAPTUREBLT so layered windows are included (through BitBlt itself: Graphics.CopyFromScreen
+// throws InvalidEnumArgumentException for any combined CopyPixelOperation), 24-bit so there's no
+// alpha channel, and any error stops the script instead of saving the untouched blank bitmap.
 #[cfg(windows)]
 const POWERSHELL: &str = r#"
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type 'using System.Runtime.InteropServices; public class Dpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'
-[Dpi]::SetProcessDPIAware() | Out-Null
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public class Gdi {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+  [DllImport("gdi32.dll")] public static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+}
+'@
+[Gdi]::SetProcessDPIAware() | Out-Null
 $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$op = [int][System.Drawing.CopyPixelOperation]::SourceCopy -bor [int][System.Drawing.CopyPixelOperation]::CaptureBlt
-$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size, [System.Enum]::ToObject([System.Drawing.CopyPixelOperation], $op))
+$dst = $g.GetHdc(); $src = [Gdi]::GetDC([IntPtr]::Zero)
+$ok = [Gdi]::BitBlt($dst, 0, 0, $b.Width, $b.Height, $src, $b.X, $b.Y, 0x40CC0020) # SRCCOPY | CAPTUREBLT
+[Gdi]::ReleaseDC([IntPtr]::Zero, $src) | Out-Null; $g.ReleaseHdc($dst)
+if (-not $ok) { throw "BitBlt failed" }
 $bmp.Save($env:BENCH_SHOT, [System.Drawing.Imaging.ImageFormat]::Png)
 "#;
 
